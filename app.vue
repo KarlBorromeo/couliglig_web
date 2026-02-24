@@ -1,6 +1,6 @@
 <template>
-  <div>
+  <v-app class="bg-lighten-5">
     <NuxtRouteAnnouncer />
-    <NuxtWelcome />
-  </div>
+    <NuxtLayout />
+  </v-app>
 </template>
