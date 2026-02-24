@@ -1,8 +1,20 @@
 <template>
-    <v-card>
     <v-layout>
+        <v-app-bar
+            v-if="$vuetify.display.mobile"
+            app
+            color="white"
+            elevation="1"
+            >
+            <v-app-bar-nav-icon
+                variant="text"
+                @click.stop="drawer = !drawer"
+            />
+        </v-app-bar>
         <v-navigation-drawer
-            permanent
+            v-model="drawer"
+            :location="$vuetify.display.mobile ? 'left' : undefined"
+            
         >
             <v-list>
                 <v-card-title class="text-center">COULIGLIG</v-card-title>
@@ -20,16 +32,19 @@
                         title="Map and Database"
                     />
                 </template>
-                <v-list-item prepend-icon="mdi-map" title="Map" value="map" to="/map"></v-list-item>
+                <v-list-item prepend-icon="mdi-map" title="Map" value="map" to="/map" link></v-list-item>
                 <v-list-item prepend-icon="mdi-database" title="Database" value="database" to="/database"></v-list-item>
             </v-list-group>
             <v-list-item prepend-icon="mdi-robot" title="Navigation" value="navigation" to="/navigation"></v-list-item>
             </v-list>
         </v-navigation-drawer>
 
-        <v-main style="height: 100vh">
+        <v-main style="height: 100vh" :class="$vuetify.display.mobile ? 'mt-20' : 'pt-12'">
             <NuxtPage />
         </v-main>
     </v-layout>
-</v-card>
 </template>
+
+<script setup lang="ts">
+    const drawer = ref(false)
+</script>

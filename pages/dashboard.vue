@@ -1,72 +1,46 @@
 <template>
-  <div class="d-flex justify-space-around">
-    <v-menu>
-      <template v-slot:activator="{ props }">
-        <v-btn
-          color="primary"
-          v-bind="props"
+  <v-container>
+    <v-table>
+      <thead>
+        <tr>
+          <th v-for="header in itemHeader" :key="header">
+            {{ header }}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr
+          v-for="item in itemsData"
+          :key="item.name"
         >
-          Activator slot
-        </v-btn>
-      </template>
-      <v-list>
-        <v-list-item
-          v-for="(item, index) in items"
-          :key="index"
-          :value="index"
-        >
-          <v-list-item-title>{{ item.title }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </v-menu>
-
-    <v-btn
-      color="primary"
-    >
-      Parent activator
-
-      <v-menu activator="parent">
-        <v-list>
-          <v-list-item
-            v-for="(item, index) in items"
-            :key="index"
-            :value="index"
-          >
-            <v-list-item-title>{{ item.title }}</v-list-item-title>
-          </v-list-item>
-        </v-list>
-      </v-menu>
-    </v-btn>
-
-    <v-btn
-      id="menu-activator"
-      color="primary"
-    >
-      Sibling activator
-    </v-btn>
-
-    <v-menu activator="#menu-activator">
-      <v-list>
-        <v-list-item
-          v-for="(item, index) in items"
-          :key="index"
-          :value="index"
-        >
-          <v-list-item-title>{{ item.title }}</v-list-item-title>
-        </v-list-item>
-      </v-list>
-    </v-menu>
-  </div>
+          <td>{{ item.name }}</td>
+          <td>{{ item.ip }}</td>
+          <td>{{ item.status }}</td>
+          <td>{{ item.battery }}</td>
+        </tr>
+      </tbody>
+    </v-table>
+  </v-container>
 </template>
-<script>
-  export default {
-    data: () => ({
-      items: [
-        { title: 'Click Me' },
-        { title: 'Click Me' },
-        { title: 'Click Me' },
-        { title: 'Click Me 2' },
-      ],
-    }),
-  }
+<script setup lang="ts">
+  const itemHeader = [
+    'Robot name',
+    'IP Address',
+    'Status',
+    'Battery (%)',
+  ]
+  const itemsData = [
+    {
+      name: 'Robot 1',
+      ip: '192.168.1.1',
+      status: 'Active',
+      battery: 85,
+    },
+    {
+      name: 'Robot 2',
+      ip: '192.168.1.2',
+      status: 'Inactive',
+      battery: 60,
+    },
+  ]
 </script>
