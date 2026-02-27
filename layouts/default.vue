@@ -39,7 +39,7 @@
             </v-list>
         </v-navigation-drawer>
 
-        <v-main style="height: 100vh" :class="$vuetify.display.mobile ? 'mt-20' : 'pt-12'">
+        <v-main style="height: 100vh; overflow-y: auto;" :class="$vuetify.display.mobile ? 'mt-20' : 'pt-12'">
             <NuxtPage />
         </v-main>
     </v-layout>
