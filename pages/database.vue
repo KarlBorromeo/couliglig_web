@@ -50,7 +50,7 @@
 </template>
 
 <script setup lang="ts">
-  // import yaml from 'js-yaml'
+  import YAML from "yaml";
   interface Dock {
     pose_x: string
     pose_y: string
@@ -130,12 +130,38 @@
     URL.revokeObjectURL(url)
   }
 
-  function parseYaml(text: string) {
-    // This is a placeholder for YAML parsing logic.
-    // You can use a library like js-yaml to parse the YAML content and populate the docks array.
-    // For example:
-    // const data = yaml.load(text);
-    // Then you would need to transform the data into the format expected by the docks array.
+  function loadYaml(file : File | null) {
+    alert("parsing yaml is not implemented yet")
+    if (!file) return;
+    resetDocks();
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const text = e.target?.result;
+      if (typeof text === "string") {
+      try {
+          const parsed = YAML.parse(text);
+          const docksData = parsed.docks;
+          for (const dockKey in docksData) {
+            const dockInfo = docksData[dockKey];
+            const pose = dockInfo.pose;
+            const marker = dockInfo.aruco_markers;
+            docks.value.push({
+              pose_x: pose[0].toString(),
+              pose_y: pose[1].toString(),
+              pose_theta: pose[2].toString(),
+              marker_id: marker.center.toString()
+            });
+          }
+        } catch (err) {
+          console.error("Invalid YAML file", err);
+        }
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function resetDocks() {
+    docks.value = [];
   }
 
   watch(uploadedFile, async (file: File | null) => {
@@ -144,7 +170,7 @@
     try {
       const text = await file.text()
       generatedYaml.value = `\n` + text
-      // parseYaml(text)
+      loadYaml(file)
     } catch (error) {
       console.error('Error reading file:', error)
     }
