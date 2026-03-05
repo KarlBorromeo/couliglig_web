@@ -45,6 +45,7 @@
 
 <script setup lang="ts">
   import YAML from "yaml";
+  const dockStore = useDockStore();
   const mapYamlFile = ref<File | null>(null);
 
   interface Dock {
@@ -105,6 +106,7 @@
   }
 
   function handleSubmit(data: { combinationName: string }) {
+    console.log(dockStore.sample())
     alert(`Received combination name from modal: ${data.combinationName}`); 
   }
 </script>
