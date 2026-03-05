@@ -16,7 +16,9 @@
     <v-card elevation="3" v-for="(dock, i) in docks" :key="i">
         <v-card-text>
           <v-row>
-            
+            <v-col sm="4">
+              <v-text-field label="Dock ID" v-model="dock.dock_id" variant="outlined"></v-text-field>
+            </v-col>
             <v-col sm="4">
               <v-text-field label="Pose X" v-model="dock.pose_x" variant="outlined" type="number"></v-text-field>
             </v-col>
@@ -26,11 +28,20 @@
             <v-col sm="4">
               <v-text-field label="Pose Theta" v-model="dock.pose_theta" variant="outlined" type="number"></v-text-field>
             </v-col>
-            <v-col cols="11" class="d-flex justify-space-between">
+            <v-col sm="4">
               <v-text-field label="Aruco Marker ID" v-model="dock.marker_id" variant="outlined" type="number"></v-text-field>
             </v-col>   
-            <v-col cols="1" class="d-flex justify-center">
-              <v-btn icon="mdi-close" color="red" size="small" @click="deleteDock(i)"></v-btn>
+            <v-col sm="3">
+                <v-select
+                  :items="dockingTypes"
+                  v-model="dock.dock_type"
+                  variant="outlined"
+                  class="mx-auto my-0"
+                  hide-details
+                ></v-select>
+            </v-col>
+            <v-col sm="1">
+                <v-btn icon="mdi-trash-can-outline" color="primary" size="small" @click="deleteDock(i)"></v-btn>
             </v-col>         
           </v-row>
         </v-card-text>
@@ -52,29 +63,35 @@
 <script setup lang="ts">
   import YAML from "yaml";
   interface Dock {
+    dock_id: string
     pose_x: string
     pose_y: string
     pose_theta: string
     marker_id: string
+    dock_type: string
   }
 
   let docks = ref<Dock[]>([])
   const generatedYaml = ref<string>('')
   const uploadedFile = ref<File | null>(null)
+  const dockingTypes = ['pickup', 'receiver', 'waiting_zone']
 
   function addDock() {
     docks.value.push(
       {
+        dock_id: '',
         pose_x: '',
         pose_y: '',
         pose_theta: '',
-        marker_id: ''
+        marker_id: '',
+        dock_type: 'pickup' // default type, can be changed by user
       }
     )
   }
 
   function deleteDock(i: number){
     docks.value.splice(i, 1)
+    generateYAML() // update yaml after deletion
   }
 
   function formatFloat(value: string) {
@@ -99,6 +116,7 @@
   function generateYAML() {
     let outputText =`\ndocks:\n`
     docks.value.forEach((dock : Dock , i: number) => {
+      const dockId = dock.dock_id || `dock_${i}`
       const px = formatFloat(dock.pose_x);
       const py = formatFloat(dock.pose_y);
       const pt = formatFloat(dock.pose_theta);
@@ -107,17 +125,19 @@
       // calculate 180 deg rotation from pt
       const mt = rotate180(pt);
       const center = dock.marker_id;
-      outputText +=`  dock_${i}:\n`;
+      outputText +=`  ${dockId}:\n`;
       outputText +=`    pose: [${px}, ${py}, ${pt}]\n`;
       outputText +=`    aruco_markers:\n`;
       outputText +=`      pos: [${mx}, ${my}, ${mt}]\n`;
-      outputText +=`      center: ${center}\n\n`;
+      outputText +=`      center: ${center}\n`;
+      outputText +=`    dock_type: ${dock.dock_type}\n\n`;
     });
     generatedYaml.value = outputText
   }
 
   function downloadYAML(){
     if (!generatedYaml.value) return
+    generateYAML() // ensure yaml is up to date with latest changes
     const cleanedYaml = generatedYaml.value.trimStart()
     const blob = new Blob([cleanedYaml], {
       type: 'text/yaml;charset=utf-8;'
@@ -145,12 +165,15 @@
             const pose = dockInfo.pose;
             const marker = dockInfo.aruco_markers;
             docks.value.push({
+              dock_id: dockKey,
               pose_x: pose[0].toString(),
               pose_y: pose[1].toString(),
               pose_theta: pose[2].toString(),
-              marker_id: marker.center.toString()
+              marker_id: marker.center.toString(),
+              dock_type: 'pickup' // default type, can be changed by user
             });
           }
+          generateYAML()
         } catch (err) {
           console.error("Invalid YAML file", err);
         }
@@ -164,11 +187,13 @@
   }
 
   watch(uploadedFile, async (file: File | null) => {
-    if (!file) return
+    if (!file) {
+      resetDocks();
+      generatedYaml.value = '';
+      return;
+    }
 
     try {
-      const text = await file.text()
-      generatedYaml.value = `\n` + text
       loadYaml(file)
     } catch (error) {
       console.error('Error reading file:', error)

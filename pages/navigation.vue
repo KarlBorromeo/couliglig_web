@@ -67,7 +67,6 @@
   watch(mapYamlFile, async (file: File | null) => {
     if (!file) {
       docks.value = [];
-      // docksHaveBoxes.value = [];
       return;
     }
     try {
@@ -90,10 +89,11 @@
             const dockInfo = docksData[dockKey];
             const pose = dockInfo.pose;
             const marker = dockInfo.aruco_markers;
+            const dock_type = dockInfo.dock_type;
             docks.value.push({
               config_id: undefined,
               dock_id: dockKey,
-              dock_type: 'pickup', // default type, can be changed by user
+              dock_type: dock_type,
               x: +pose[0],
               y: +pose[1],
               theta: +pose[2],
