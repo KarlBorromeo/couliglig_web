@@ -13,31 +13,34 @@
       <v-table striped="even">
         <thead>
           <tr>
+            <th>Dock ID</th>
             <th>Pose X</th>
             <th>Pose Y</th>
             <th>Pose Theta</th>
             <th>Aruco Marker ID</th>
-            <th>Add or Remove Box</th>
+            <th>Docking Type</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="(dock, i) in docks" :key="i">
-            <td>{{ dock.pose_x }}</td>
-            <td>{{ dock.pose_y }}</td>
-            <td>{{ dock.pose_theta }}</td>
-            <td>{{ dock.marker_id }}</td>
+            <td>{{ dock.dock_id }}</td>
+            <td>{{ dock.x }}</td>
+            <td>{{ dock.y }}</td>
+            <td>{{ dock.theta }}</td>
+            <td>{{ dock.aruco_id }}</td>
             <td>
-              <v-btn density="comfortable" color="success" icon="mdi-plus-box" @click="addBoxToDock(+dock.marker_id)" v-if="!docksHaveBoxes.includes(+dock.marker_id)"/>
-              <v-btn density="comfortable" color="error" icon="mdi-minus-box" @click="removeBoxFromDock(+dock.marker_id)" v-else/>
+                <v-select
+                  :items="dockingTypes"
+                  v-model="dock.dock_type"
+                  variant="outlined"
+                  density="compact"
+                  class="mx-auto my-0"
+                  hide-details
+                ></v-select>
             </td>
           </tr>
         </tbody>
       </v-table>
-      <hr>
-      <section class="mt-2">
-        <p class="text-caption">Aruco ID markers with boxes:</p> 
-        <p>{{ docksHaveBoxes.join(', ') }}</p>
-      </section>
     </v-card>
     <UploadModal @submit="handleSubmit"/>
   </v-container>
@@ -48,19 +51,23 @@
   const dockStore = useDockStore();
   const mapYamlFile = ref<File | null>(null);
 
+  const dockingTypes = ['pickup', 'receiver', 'waiting_zone']
+
   interface Dock {
-    pose_x: string
-    pose_y: string
-    pose_theta: string
-    marker_id: string
+    config_id: number | undefined
+    dock_id: string
+    dock_type: string
+    x: number
+    y: number
+    theta: number
+    aruco_id: number
   }
   const docks = ref<Dock[]>([])
-  const docksHaveBoxes = ref<number[]>([])
 
   watch(mapYamlFile, async (file: File | null) => {
     if (!file) {
       docks.value = [];
-      docksHaveBoxes.value = [];
+      // docksHaveBoxes.value = [];
       return;
     }
     try {
@@ -84,10 +91,13 @@
             const pose = dockInfo.pose;
             const marker = dockInfo.aruco_markers;
             docks.value.push({
-              pose_x: pose[0].toString(),
-              pose_y: pose[1].toString(),
-              pose_theta: pose[2].toString(),
-              marker_id: marker.center.toString()
+              config_id: undefined,
+              dock_id: dockKey,
+              dock_type: 'pickup', // default type, can be changed by user
+              x: +pose[0],
+              y: +pose[1],
+              theta: +pose[2],
+              aruco_id: marker.center
             });
           }
         } catch (err) {
@@ -98,15 +108,7 @@
     reader.readAsText(file);
   }
 
-  function addBoxToDock(marker_id: number) {
-    docksHaveBoxes.value.push(marker_id)
-  }
-  function removeBoxFromDock(marker_id: number) {
-    docksHaveBoxes.value = docksHaveBoxes.value.filter((id: number) => id !== marker_id)
-  }
-
-  function handleSubmit(data: { combinationName: string }) {
-    console.log(dockStore.sample())
-    alert(`Received combination name from modal: ${data.combinationName}`); 
+  function handleSubmit(data: { name: string, description: string }) {
+    dockStore.createConfig(data, docks.value)
   }
 </script>

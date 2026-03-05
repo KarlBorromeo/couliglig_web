@@ -16,8 +16,12 @@
             <v-card title="Dialog">
             <v-card-text>
                 <v-text-field
-                    v-model="combinationName"
-                    label="Combination Name"
+                    v-model="name"
+                    label="Config Name"
+                ></v-text-field>
+                <v-text-field
+                    v-model="description"
+                    label="Config Description"
                 ></v-text-field>
             </v-card-text>
 
@@ -39,18 +43,20 @@
     </v-dialog>
 </template>
 
-<script setup>
+<script setup lang="ts">
     const emit = defineEmits(['submit']);
-    const combinationName = ref("");
-    function submit(isActive) {
-        if (!combinationName.value) {
-            alert("Please enter a combination name");
+    const name = ref("");
+    const description = ref("");
+    function submit(isActive: Ref<boolean>) {
+        if (!name.value || !description.value) {
+            alert("Please enter a combination name and description");
             return;
         }
-        emit('submit', { combinationName: combinationName.value });
+        emit('submit', { name: name.value, description: description.value });
 
         // reset + close
-        combinationName.value = ""
+        name.value = ""
+        description.value = ""
         isActive.value = false
     }
 </script>
