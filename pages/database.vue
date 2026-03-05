@@ -131,7 +131,6 @@
   }
 
   function loadYaml(file : File | null) {
-    alert("parsing yaml is not implemented yet")
     if (!file) return;
     resetDocks();
     const reader = new FileReader();

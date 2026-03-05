@@ -5,7 +5,8 @@ export default defineNuxtConfig({
   modules: [
     '@nuxt/image',
     '@nuxt/fonts',
-    'vuetify-nuxt-module'
+    'vuetify-nuxt-module',
+    '@pinia/nuxt'
   ],
   vuetify: {
     moduleOptions: {
@@ -15,6 +16,11 @@ export default defineNuxtConfig({
       theme: {
         defaultTheme: 'light'
       }
+    }
+  },
+  runtimeConfig: {
+    public: {
+      baseURL: process.env.BE_BASE_URL || 'http://localhost:8000/'
     }
   }
 })
