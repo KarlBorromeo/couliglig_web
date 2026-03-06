@@ -1,6 +1,5 @@
 import { defineStore } from "pinia";
 import axios from "axios";
-import type { st } from "vue-router/dist/router-CWoNjPRp.mjs";
 
 export const useDockStore = defineStore("dock", {
   state: () => ({
