@@ -7,7 +7,7 @@
     <v-col>
       <v-file-input clearable label="Map Yaml" variant="outlined" accept=".yaml,.yml"></v-file-input>
       <v-file-input clearable label="Map Image" variant="outlined" accept=".pgm" ></v-file-input>
-      <v-file-input clearable label="Dock Database" variant="outlined" accept=".yaml,.yml" v-model="mapYamlFile" ></v-file-input>        
+      <v-file-input clearable label="Dock Database" variant="outlined" accept=".yaml,.yml" v-model="mapYamlFile"></v-file-input>        
     </v-col>
     <v-card elevation="3" class="pa-2">
       <v-table striped="even">
@@ -65,8 +65,8 @@
   const docks = ref<Dock[]>([])
 
   watch(mapYamlFile, async (file: File | null) => {
+    docks.value = [];
     if (!file) {
-      docks.value = [];
       return;
     }
     try {
