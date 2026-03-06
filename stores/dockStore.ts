@@ -15,7 +15,7 @@ export const useDockStore = defineStore("dock", {
                 ...dock,
                 config_id: config.id
             }))
-            // await axios.post(`${baseurl}dock/create_dock`, updatedDocksPayload);
+            await axios.post(`${baseurl}dock/create_dock`, updatedDocksPayload);
 
             formDataMap.append("dock_config_id", config.id);
             await axios.post(`${baseurl}map/upload`, formDataMap, {
@@ -23,10 +23,13 @@ export const useDockStore = defineStore("dock", {
                     "Content-Type": "multipart/form-data"
                 }
             });
+
+            // TODO add here rquest for intial poses yaml
+
             console.log("Config created successfully:", config);
             console.log("Docks updated with config_id:", updatedDocksPayload);  
             console.log("Map files uploaded successfully");
-            // TODO: add here request to create the mapping between the config and the docks
+   
         } catch (error) {
             console.error("Error creating config:", error);
         }
