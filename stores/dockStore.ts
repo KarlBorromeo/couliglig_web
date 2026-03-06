@@ -4,6 +4,7 @@ import axios from "axios";
 export const useDockStore = defineStore("dock", {
   state: () => ({
     dockConfigs: [] as dockConfigs[],
+    onlineRobots: [] as onlineRobot[]
   }),
   actions: {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
@@ -32,8 +33,6 @@ export const useDockStore = defineStore("dock", {
             }))
             await axios.post(`${baseurl}robots/infos`, updatedRobotPoses);
 
-            // TODO: add here request for initial poses yaml
-
             console.log("Config created successfully:", config);
             console.log("Docks updated with config_id:", updatedDocksPayload);  
             console.log("Map files uploaded successfully");
@@ -49,6 +48,22 @@ export const useDockStore = defineStore("dock", {
             this.dockConfigs = response.data;
         } catch (error) {
             console.error("Error fetching dock configurations:", error);
+        }
+    },
+    async fetchOnlineRobots() {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}robots/online`);
+            const robots = response.data.data;
+            console.log("Fetched online robots:", robots);
+            this.onlineRobots = robots.map((robot: onlineRobot) => ({
+                ...robot,
+                battery: Math.floor(Math.random() * 100) + 1, // Simulate battery level
+                status: "Idle" // Default status, can be updated based on real data
+            }));
+        } catch (error) {
+            console.error("Error fetching online robots:", error);
+            return [];
         }
     }
   },
@@ -77,4 +92,13 @@ interface dockConfigs {
     id: number;
     name: string;
     description: string;
+}
+interface onlineRobot {
+    ip: string;
+    hostname: string;
+    namespace: string;
+    ros_domain_id: string;
+    battery: number; //TODO: replace with real battery data from backend
+    status: string; //TODO: replace with real status data from roslib
+    timestamp: number;
 }

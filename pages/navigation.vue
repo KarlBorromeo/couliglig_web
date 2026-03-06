@@ -37,10 +37,12 @@
           <tbody>
             <tr
               v-for="activeRobot in activeRobots"
-              :key="activeRobot.name"
+              :key="activeRobot.ip"
             >
-              <td>{{ activeRobot.name }}</td>
+              <td>{{ activeRobot.hostname }}</td>
+              <td>{{ activeRobot.namespace }}</td>
               <td>{{ activeRobot.ip }}</td>
+              <td>{{ activeRobot.ros_domain_id }}</td>
               <td>
                 <v-icon color="green" v-if="activeRobot.battery > 75">
                   mdi-battery-high
@@ -51,9 +53,11 @@
                 <v-icon color="red" v-else>
                   mdi-battery-low
                 </v-icon>
-                {{ activeRobot.battery }}
+                {{ activeRobot.battery }}%
               </td>
-              <td>{{ activeRobot.status }}</td>
+              <td>
+                {{ activeRobot.status }}
+              </td>
               <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.name"></v-checkbox></td>
             </tr>
           </tbody>
@@ -103,13 +107,14 @@
 <script setup lang="ts">
   const dockStore = useDockStore()
   const selectedRobots = ref<string[]>([])
-  const activeRobotHeaders = ['Robot Name', 'IP Address', 'Battery','Navigation Status', 'Select']
-  const activeRobots = [
-    { name: 'Robot 1', ip: '192.168.20.102', battery: 80, status: 'Idle' },
-    { name: 'Robot 2', ip: '192.168.20.103', battery: 60, status: 'Navigating to Dock 1' },
-    { name: 'Robot 3', ip: '192.168.20.104', battery: 90, status: 'Charging at Dock 2' },
-    { name: 'Robot 4', ip: '192.168.20.105', battery: 50, status: 'Idle' },
-  ] 
+  const selectedDockConfig = ref<number | null>(null)
+  const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS Domain ID', 'Battery','Navigation Status', 'Select']
+  // const activeRobots = [
+  //   { name: 'Robot 1', ip: '192.168.20.102', battery: 80, status: 'Idle' },
+  //   { name: 'Robot 2', ip: '192.168.20.103', battery: 60, status: 'Navigating to Dock 1' },
+  //   { name: 'Robot 3', ip: '192.168.20.104', battery: 90, status: 'Charging at Dock 2' },
+  //   { name: 'Robot 4', ip: '192.168.20.105', battery: 50, status: 'Idle' },
+  // ] 
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
   const docks = [
     { id: 'Dock 1', x: '2.5', y: '3.0', theta: '90°', arucoId: 'Aruco 1' },
@@ -117,10 +122,11 @@
     { id: 'Dock 3', x: '1.0', y: '4.0', theta: '270°', arucoId: 'Aruco 3' },
   ]
   const dockConfigs = computed(() => dockStore.dockConfigs)
-  const selectedDockConfig = ref<number | null>(null)
+  const activeRobots = computed(() => dockStore.onlineRobots)
 
   onMounted(async () => {
     console.log("Fetching dock configurations...")
     await dockStore.fetchDockConfigs()
+    await dockStore.fetchOnlineRobots()
   })
 </script>
