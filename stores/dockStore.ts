@@ -65,6 +65,12 @@ export const useDockStore = defineStore("dock", {
             console.error("Error fetching online robots:", error);
             return [];
         }
+    },
+    updateRobotStatus(ip: string, status: string) {
+        const robotIndex = this.onlineRobots.findIndex(robot => robot.ip === ip);
+        if (robotIndex !== -1) {
+            this.onlineRobots[robotIndex].status = status;
+        }
     }
   },
 });

@@ -36,6 +36,7 @@
   </v-container>
 </template>
 <script setup lang="ts">
+
   const itemHeader = [
     'Robot name',
     'IP Address',
@@ -83,8 +84,16 @@
       messageType: "std_msgs/String"
     })
 
+    const status = new ROSLIB.Topic({
+      ros: ros,
+      name: "/couliglig_bot_6/robot_state",
+      messageType: "custom_msgs/CouligligStatus"
+    })
+    status.subscribe((msg:any) => {
+      console.log("Status:", msg)
+    })
     listener.subscribe((msg:any) => {
-      console.log("Message:", msg.data)
+      // console.log("Message:", msg.data)
     })
 
   })

@@ -58,7 +58,7 @@
               <td>
                 {{ activeRobot.status }}
               </td>
-              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.name"></v-checkbox></td>
+              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
             </tr>
           </tbody>
           <v-footer class="d-flex align-center">
@@ -108,13 +108,7 @@
   const dockStore = useDockStore()
   const selectedRobots = ref<string[]>([])
   const selectedDockConfig = ref<number | null>(null)
-  const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS Domain ID', 'Battery','Navigation Status', 'Select']
-  // const activeRobots = [
-  //   { name: 'Robot 1', ip: '192.168.20.102', battery: 80, status: 'Idle' },
-  //   { name: 'Robot 2', ip: '192.168.20.103', battery: 60, status: 'Navigating to Dock 1' },
-  //   { name: 'Robot 3', ip: '192.168.20.104', battery: 90, status: 'Charging at Dock 2' },
-  //   { name: 'Robot 4', ip: '192.168.20.105', battery: 50, status: 'Idle' },
-  // ] 
+  const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
   const docks = [
     { id: 'Dock 1', x: '2.5', y: '3.0', theta: '90°', arucoId: 'Aruco 1' },
@@ -123,10 +117,43 @@
   ]
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const activeRobots = computed(() => dockStore.onlineRobots)
+  const rosConnections: any[] = []
 
   onMounted(async () => {
-    console.log("Fetching dock configurations...")
     await dockStore.fetchDockConfigs()
     await dockStore.fetchOnlineRobots()
+
+    const ROSLIB = (window as any).ROSLIB
+    activeRobots.value.forEach(robot => {
+      const ros = new ROSLIB.Ros({
+        url: `ws://${robot.ip}:9090`
+      })
+      rosConnections.push(ros)
+      ros.on('connection', () => {
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+      })
+      ros.on('error', (error: any) => {
+        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
+      })
+      ros.on('close', () => {
+        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
+      })
+
+      const statusListener = new ROSLIB.Topic({
+        ros: ros,
+        name: "/couliglig_bot_6/robot_state",
+        messageType: "custom_msgs/CouligligStatus"
+      })
+
+      statusListener.subscribe((msg: any) => {
+        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+        const state = msg.state
+        dockStore.updateRobotStatus(robot.ip, state)
+      })
+    })
+  })
+  onUnmounted(() => {
+    console.log("Closing ROS connections...")
+    rosConnections.forEach((ros) => ros.close())
   })
 </script>
