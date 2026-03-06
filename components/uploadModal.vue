@@ -7,7 +7,7 @@
             text="Open Dialog"
             variant="flat"
             >
-            <v-icon>mdi-cloud-upload</v-icon>Upload
+            <v-icon class="mr-2">mdi-cloud-upload</v-icon> Submit Config
         </v-btn>
         </template>
 
