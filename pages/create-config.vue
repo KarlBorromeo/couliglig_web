@@ -90,7 +90,7 @@
     <v-col class="d-flex">
       <UploadModal class="flex-grow-1" @submit="handleSubmit"/>    
     </v-col>
-
+    
   </v-container>
 </template>
 

@@ -3,10 +3,10 @@ import axios from "axios";
 
 export const useDockStore = defineStore("dock", {
   state: () => ({
-
+    dockConfigs: [] as dockConfigs[],
   }),
   actions: {
-    async createConfig(configPayload: dockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
+    async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
 
@@ -41,11 +41,20 @@ export const useDockStore = defineStore("dock", {
         } catch (error) {
             console.error("Error creating config:", error);
         }
+    },
+    async fetchDockConfigs() {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}dock/configs`);
+            this.dockConfigs = response.data;
+        } catch (error) {
+            console.error("Error fetching dock configurations:", error);
+        }
     }
   },
 });
 
-interface dockConfig {
+interface createDockConfig {
   name: string;
   description: string;
 }
@@ -63,4 +72,9 @@ interface robotPose {
     initial_x: number
     initial_y: number
     initial_theta: number
-  }
+}
+interface dockConfigs {
+    id: number;
+    name: string;
+    description: string;
+}
