@@ -56,4 +56,36 @@
       battery: 60,
     },
   ]
+
+  onMounted(() => {
+
+    const ROSLIB = (window as any).ROSLIB
+
+    const ros = new ROSLIB.Ros({
+      url: "ws://192.168.20.106:9090"
+    })
+
+    ros.on("connection", () => {
+      console.log("Connected to rosbridge")
+    })
+
+    ros.on("error", (err: any) => {
+      console.error("ROS error:", err);
+    });
+
+    ros.on("close", () => {
+      console.log("ROS connection closed");
+    });
+
+    const listener = new ROSLIB.Topic({
+      ros: ros,
+      name: "/chatter",
+      messageType: "std_msgs/String"
+    })
+
+    listener.subscribe((msg:any) => {
+      console.log("Message:", msg.data)
+    })
+
+  })
 </script>
