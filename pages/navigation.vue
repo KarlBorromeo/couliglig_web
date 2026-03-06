@@ -5,9 +5,9 @@
       <p>This section allows you to manage the navigation settings and files for the robots.</p>
     </section>
     <v-col>
-      <v-file-input clearable label="Map Yaml" variant="outlined" accept=".yaml,.yml"></v-file-input>
-      <v-file-input clearable label="Map Image" variant="outlined" accept=".pgm" ></v-file-input>
-      <v-file-input clearable label="Dock Database" variant="outlined" accept=".yaml,.yml" v-model="mapYamlFile"></v-file-input>        
+      <v-file-input clearable label="Map Yaml" variant="outlined" accept=".yaml,.yml" v-model="mapYamlFile"></v-file-input>
+      <v-file-input clearable label="Map Image" variant="outlined" accept=".pgm" v-model="mapImageFile"></v-file-input>
+      <v-file-input clearable label="Dock Database" variant="outlined" accept=".yaml,.yml" v-model="dockYamlFile"></v-file-input>        
     </v-col>
     <v-card elevation="3" class="pa-2">
       <v-table striped="even">
@@ -49,7 +49,9 @@
 <script setup lang="ts">
   import YAML from "yaml";
   const dockStore = useDockStore();
+  const dockYamlFile = ref<File | null>(null);
   const mapYamlFile = ref<File | null>(null);
+  const mapImageFile = ref<File | null>(null);
 
   const dockingTypes = ['pickup', 'receiver', 'waiting_zone']
 
@@ -64,7 +66,7 @@
   }
   const docks = ref<Dock[]>([])
 
-  watch(mapYamlFile, async (file: File | null) => {
+  watch(dockYamlFile, async (file: File | null) => {
     docks.value = [];
     if (!file) {
       return;
@@ -109,6 +111,18 @@
   }
 
   function handleSubmit(data: { name: string, description: string }) {
-    dockStore.createConfig(data, docks.value)
+    const formDataMap = handleMapSubmit();
+    dockStore.createConfig(data, docks.value, formDataMap)
+  }
+
+  function handleMapSubmit() {
+    const formData = new FormData();
+    if (mapYamlFile.value) {
+      formData.append("map_yaml", mapYamlFile.value);
+    }
+    if (mapImageFile.value) {
+      formData.append("map_image", mapImageFile.value);
+    }
+    return formData;
   }
 </script>

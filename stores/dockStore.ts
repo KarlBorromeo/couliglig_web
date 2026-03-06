@@ -6,7 +6,7 @@ export const useDockStore = defineStore("dock", {
 
   }),
   actions: {
-    async createConfig(configPayload: dockConfig, docksPayload: createDock[]| []) {
+    async createConfig(configPayload: dockConfig, docksPayload: createDock[]| [], formDataMap: FormData) {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             const createConfigRes = await axios.post(`${baseurl}dock`, configPayload);
@@ -15,8 +15,17 @@ export const useDockStore = defineStore("dock", {
                 ...dock,
                 config_id: config.id
             }))
-            await axios.post(`${baseurl}dock/create_dock`, updatedDocksPayload);
+            // await axios.post(`${baseurl}dock/create_dock`, updatedDocksPayload);
 
+            formDataMap.append("dock_config_id", config.id);
+            await axios.post(`${baseurl}map/upload`, formDataMap, {
+                headers: {
+                    "Content-Type": "multipart/form-data"
+                }
+            });
+            console.log("Config created successfully:", config);
+            console.log("Docks updated with config_id:", updatedDocksPayload);  
+            console.log("Map files uploaded successfully");
             // TODO: add here request to create the mapping between the config and the docks
         } catch (error) {
             console.error("Error creating config:", error);
