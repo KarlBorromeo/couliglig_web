@@ -24,7 +24,7 @@ export const useDockStore = defineStore("dock", {
                 }
             });
 
-            // TODO add here rquest for intial poses yaml
+            // TODO: add here request for initial poses yaml
 
             console.log("Config created successfully:", config);
             console.log("Docks updated with config_id:", updatedDocksPayload);  
