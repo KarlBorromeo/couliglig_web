@@ -8,28 +8,38 @@ export const useDockStore = defineStore("dock", {
   }),
   actions: {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
+        let configId: number | undefined = undefined;
+        let mapId: number | undefined = undefined;
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
 
             const createConfigRes = await axios.post(`${baseurl}dock`, configPayload);
             const config = createConfigRes.data
+            configId = config.id;
             const updatedDocksPayload = docksPayload.map(dock => ({
                 ...dock,
-                config_id: config.id
+                config_id: configId
             }))
             await axios.post(`${baseurl}dock/create_dock`, updatedDocksPayload);
 
-            formDataMap.append("dock_config_id", config.id);
+            if (configId === undefined) {
+                throw new Error("Config ID is undefined after creation");
+            }
+            formDataMap.append("dock_config_id", configId.toString());
             const uploadMapRes = await axios.post(`${baseurl}map/upload`, formDataMap, {
                 headers: {
                     "Content-Type": "multipart/form-data"
                 }
             });
             const map = uploadMapRes.data;
+            mapId = map.id;
 
+            if (mapId === undefined) {
+                throw new Error("Map ID is undefined after upload");
+            }
             const updatedRobotPoses = robotPoses.map(pose => ({
                 ...pose,
-                map_id: map.id
+                map_id: mapId
             }))
             await axios.post(`${baseurl}robots/infos`, updatedRobotPoses);
 
@@ -37,8 +47,8 @@ export const useDockStore = defineStore("dock", {
             console.log("Docks updated with config_id:", updatedDocksPayload);  
             console.log("Map files uploaded successfully");
    
-        } catch (error) {
-            console.error("Error creating config:", error);
+        } catch (error:any) {
+            throw new Error(`Error creating configuration`);  
         }
     },
     async fetchDockConfigs() {
@@ -71,7 +81,17 @@ export const useDockStore = defineStore("dock", {
         if (robotIndex !== -1) {
             this.onlineRobots[robotIndex].status = status;
         }
-    }
+    },
+    async deleteDockConfig(configId: number) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+            this.dockConfigs = this.dockConfigs.filter(config => config.id !== configId);
+            console.log(`Dock configuration with ID ${configId} deleted successfully.`);
+        } catch (error) {
+            console.error("Error deleting dock configuration:", error);
+        }
+    },
   },
 });
 

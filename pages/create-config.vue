@@ -90,7 +90,7 @@
     <v-col class="d-flex">
       <UploadModal class="flex-grow-1" @submit="handleSubmit"/>    
     </v-col>
-    
+    <Snackbar ref="snackbar" class="mt-4"/>
   </v-container>
 </template>
 
@@ -103,6 +103,7 @@
   const listRobotNames = ['couliglig_bot_1', 'couliglig_bot_2', 'couliglig_bot_3', 'couliglig_bot_4', 'couliglig_bot_5', 'couliglig_bot_6', 'couliglig_bot_7', 'couliglig_bot_8', 'couliglig_bot_9', 'couliglig_bot_10']
   let robotNames = ref<string[]>([...listRobotNames])
   const dockingTypes = ['pickup', 'receiver', 'waiting_zone']
+  const snackbar = ref<any>(null)
 
   interface Dock {
     config_id: number | undefined
@@ -172,9 +173,14 @@
     reader.readAsText(file);
   }
 
-  function handleSubmit(data: { name: string, description: string }) {
-    const formDataMap = handleMapSubmit();
-    dockStore.createConfig(data, docks.value, formDataMap, robotPoses.value);
+  async function handleSubmit(data: { name: string, description: string }) {
+    try{
+      await dockStore.createConfig(data, docks.value, handleMapSubmit(), robotPoses.value);
+      snackbar.value?.showSnackbar("Configuration created successfully!", 'green');
+    } catch (error:any) {
+      snackbar.value?.showSnackbar(error, 'red');
+      return;
+    }
   }
 
   function handleMapSubmit() {
