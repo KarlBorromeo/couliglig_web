@@ -1,20 +1,26 @@
 <template>
   <v-container>
     <v-card elevation="3">
+      <v-card-title class="d-flex align-center">
+        <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Online Robots</span></p>
+        <v-spacer></v-spacer>
+        <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
+      </v-card-title>
       <v-table>
         <thead>
           <tr>
-            <th v-for="header in itemHeader" :key="header">
+            <th v-for="header in activeRobotHeader" :key="header">
               {{ header }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="item in itemsData"
-            :key="item.name"
+            v-for="item in activeRobots"
+            :key="item.ip"
           >
-            <td>{{ item.name }}</td>
+            <td>{{ item.hostname }}</td>
+            <td>{{ item.namespace }}</td>
             <td>{{ item.ip }}</td>
             <td>{{ item.status }}</td>
             <td>
@@ -36,65 +42,56 @@
   </v-container>
 </template>
 <script setup lang="ts">
-
-  const itemHeader = [
+  const dockStore = useDockStore()
+  const activeRobotHeader = [
     'Robot name',
+    'Namespace',
     'IP Address',
     'Status',
     'Battery (%)',
   ]
-  const itemsData = [
-    {
-      name: 'Robot 1',
-      ip: '192.168.1.1',
-      status: 'Active',
-      battery: 85,
-    },
-    {
-      name: 'Robot 2',
-      ip: '192.168.1.2',
-      status: 'Inactive',
-      battery: 60,
-    },
-  ]
+  const activeRobots = computed(() => dockStore.onlineRobots)
+  const rosConnections: any[] = []
 
-  onMounted(() => {
+  function refreshRobots() {
+    dockStore.fetchOnlineRobots()
+  }
+
+  onMounted(async () => {
+    await dockStore.fetchDockConfigs()
+    await dockStore.fetchOnlineRobots()
 
     const ROSLIB = (window as any).ROSLIB
+    activeRobots.value.forEach(robot => {
+      const ros = new ROSLIB.Ros({
+        url: `ws://${robot.ip}:9090`
+      })
+      rosConnections.push(ros)
+      ros.on('connection', () => {
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+      })
+      ros.on('error', (error: any) => {
+        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
+      })
+      ros.on('close', () => {
+        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
+      })
 
-    const ros = new ROSLIB.Ros({
-      url: "ws://192.168.20.106:9090"
+      const statusListener = new ROSLIB.Topic({
+        ros: ros,
+        name: "/couliglig_bot_6/robot_state",
+        messageType: "custom_msgs/CouligligStatus"
+      })
+
+      statusListener.subscribe((msg: any) => {
+        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+        const state = msg.state
+        dockStore.updateRobotStatus(robot.ip, state)
+      })
     })
-
-    ros.on("connection", () => {
-      console.log("Connected to rosbridge")
-    })
-
-    ros.on("error", (err: any) => {
-      console.error("ROS error:", err);
-    });
-
-    ros.on("close", () => {
-      console.log("ROS connection closed");
-    });
-
-    const listener = new ROSLIB.Topic({
-      ros: ros,
-      name: "/chatter",
-      messageType: "std_msgs/String"
-    })
-
-    const status = new ROSLIB.Topic({
-      ros: ros,
-      name: "/couliglig_bot_6/robot_state",
-      messageType: "custom_msgs/CouligligStatus"
-    })
-    status.subscribe((msg:any) => {
-      console.log("Status:", msg)
-    })
-    listener.subscribe((msg:any) => {
-      // console.log("Message:", msg.data)
-    })
-
+  })
+  onUnmounted(() => {
+    console.log("Closing ROS connections...")
+    rosConnections.forEach((ros) => ros.close())
   })
 </script>

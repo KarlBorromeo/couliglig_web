@@ -6,20 +6,26 @@
     </section>
 
     <v-card elevation="3">
+      <v-card-title class="d-flex align-center">
+        <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Online Robots</span></p>
+        <v-spacer></v-spacer>
+        <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
+      </v-card-title>
       <v-table>
         <thead>
           <tr>
-            <th v-for="header in itemHeader" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
+            <th v-for="header in activeRobotHeader" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
               {{ header }}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr
-            v-for="item in itemsData"
-            :key="item.name"
+            v-for="item in activeRobots"
+            :key="item.ip"
           >
-            <td>{{ item.name }}</td>
+            <td>{{ item.hostname }}</td>
+            <td>{{ item.namespace }}</td>
             <td>{{ item.ip }}</td>
             <td>
               <v-icon color="green" v-if="item.battery > 75">
@@ -37,8 +43,9 @@
               <v-radio-group
                 v-model="selectedRobot"
                 inline
+                hide-details
               >
-                <v-radio :value="item.name" />
+                <v-radio :value="item.hostname" />
               </v-radio-group>
             </td>
           </tr>
@@ -68,33 +75,60 @@
 </template>
 
 <script setup lang="ts">
-const itemHeader = [
+  const dockStore = useDockStore()
+  const activeRobotHeader = [
     'Robot name',
+    'Namespace',
     'IP Address',
     'Battery (%)',
     'Mapping'
   ]
-  const itemsData = [
-    {
-      name: 'Robot 1',
-      ip: '192.168.1.1',
-      battery: 85,
-    },
-    {
-      name: 'Robot 2',
-      ip: '192.168.1.2',
-      battery: 60,
-    },
-    {
-      name: 'Robot 3',
-      ip: '192.168.1.3',
-      battery: 40,
-    },
-  ]
+  const activeRobots = computed(() => dockStore.onlineRobots)
   let selectedRobot = ref(null)
   let isSlamRunning = ref(false)
+  const rosConnections: any[] = []
 
   function toggleSlam() {
     isSlamRunning.value = !isSlamRunning.value
   }
+  function refreshRobots() {
+    dockStore.fetchOnlineRobots()
+  }
+  onMounted(async () => {
+    await dockStore.fetchDockConfigs()
+    await dockStore.fetchOnlineRobots()
+
+    const ROSLIB = (window as any).ROSLIB
+    activeRobots.value.forEach(robot => {
+      const ros = new ROSLIB.Ros({
+        url: `ws://${robot.ip}:9090`
+      })
+      rosConnections.push(ros)
+      ros.on('connection', () => {
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+      })
+      ros.on('error', (error: any) => {
+        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
+      })
+      ros.on('close', () => {
+        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
+      })
+
+      const statusListener = new ROSLIB.Topic({
+        ros: ros,
+        name: "/couliglig_bot_6/robot_state",
+        messageType: "custom_msgs/CouligligStatus"
+      })
+
+      statusListener.subscribe((msg: any) => {
+        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+        const state = msg.state
+        dockStore.updateRobotStatus(robot.ip, state)
+      })
+    })
+  })
+  onUnmounted(() => {
+    console.log("Closing ROS connections...")
+    rosConnections.forEach((ros) => ros.close())
+  })
 </script>

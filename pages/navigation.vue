@@ -22,9 +22,9 @@
     <v-col>
       <v-card elevation="3">
         <v-card-title class="d-flex align-center">
-          <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Robots Online</span></p>
+          <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Online Robots</span></p>
           <v-spacer></v-spacer>
-          <v-btn variant="flat" prepend-icon="mdi-refresh">Refresh</v-btn>
+          <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
         </v-card-title>
         <v-table>
           <thead>
@@ -118,6 +118,10 @@
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const activeRobots = computed(() => dockStore.onlineRobots)
   const rosConnections: any[] = []
+
+  function refreshRobots() {
+    dockStore.fetchOnlineRobots()
+  }
 
   onMounted(async () => {
     await dockStore.fetchDockConfigs()
