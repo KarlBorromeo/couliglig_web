@@ -67,6 +67,7 @@
       <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
       <v-card-text>
         <div class="d-flex align-center justify-center" style="height: 700px; background-color: #f5f5f5; border: 1px solid #ddd;">
+          <span v-if="!selectedRobot" class="text-center" style="color: #888;">Select a robot to view its map</span>
           <span id="map"/>
         </div>
       </v-card-text>
@@ -87,7 +88,6 @@
   let selectedRobot = ref(null)
   let isSlamRunning = ref(false)
   const rosConnections: any[] = []
-  const mapAvailable = ref(false)
 
   function toggleSlam() {
     isSlamRunning.value = !isSlamRunning.value
@@ -117,9 +117,9 @@
       })
 
       ros.on('connection', () => {
-        // console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
         statusListener.subscribe((msg: any) => {
-          console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+          // console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
           const state = msg.state
           dockStore.updateRobotStatus(robot.ip, state)
         }) 
