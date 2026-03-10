@@ -76,6 +76,7 @@
 </template>
 
 <script setup lang="ts">
+
   const dockStore = useDockStore()
   const activeRobotHeader = [
     'Robot name',
@@ -151,6 +152,7 @@
 
     const ROSLIB = (window as any).ROSLIB
     const ROS2D = (window as any).ROS2D
+    const createjs = (window as any).createjs
 
     ros.value = new ROSLIB.Ros({
       url: `ws://${robot.ip}:9090`
@@ -187,6 +189,50 @@
         //   height: grid.height,
         //   origin: grid.pose.position
         // });
+      })
+
+      const tfClient = new ROSLIB.TFClient({
+        ros: ros.value,
+        fixedFrame: "map",
+        angularThres: 0.01,
+        transThres: 0.01,
+        rate: 10,
+        topic: `/${robot.namespace}/tf`,
+        staticTopic: `/${robot.namespace}/tf_static`
+      })
+
+      const robotMarker = new ROS2D.ArrowShape({
+        size: 0.6,
+        strokeSize: 0.05,
+        strokeColor: createjs.Graphics.getRGB(255,0,0),
+        fillColor: createjs.Graphics.getRGB(255,0,0)
+      })
+
+      viewer.scene.addChild(robotMarker)
+
+      const tfTopic = new ROSLIB.Topic({
+        ros: ros.value,
+        name: `/${robot.namespace}/tf`,
+        messageType: "tf2_msgs/msg/TFMessage"
+      })
+      tfTopic.subscribe((msg:any) => {
+
+        msg.transforms.forEach((t:any) => {
+
+          if (t.child_frame_id === "base_footprint") {
+
+            robotMarker.x = t.transform.translation.x
+            robotMarker.y = -t.transform.translation.y
+
+            const q = t.transform.rotation
+
+            const yaw = Math.atan2(
+              2 * (q.w*q.z + q.x*q.y),
+              1 - 2 * (q.y*q.y + q.z*q.z)
+            )
+            robotMarker.rotation = -yaw * 180 / Math.PI
+          }
+        })
       })
     })
   })
