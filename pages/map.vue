@@ -66,15 +66,18 @@
     <v-card elevation="3">
       <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
       <v-card-text>
-        <div class="d-flex align-center justify-center" style="height: 300px; background-color: #f5f5f5; border: 1px solid #ddd;">
-          <span class="text-muted">Map rendering will be displayed here.</span>
+        <div class="d-flex align-center justify-center" style="height: 700px; background-color: #f5f5f5; border: 1px solid #ddd;">
+          <!-- <span class="text-muted" v-if="!mapAvailable">Map rendering will be displayed here.</span> -->
+          <span id="map"/>
         </div>
+        
       </v-card-text>
     </v-card> 
   </v-container>
 </template>
 
 <script setup lang="ts">
+
   const dockStore = useDockStore()
   const activeRobotHeader = [
     'Robot name',
@@ -87,6 +90,7 @@
   let selectedRobot = ref(null)
   let isSlamRunning = ref(false)
   const rosConnections: any[] = []
+  const mapAvailable = ref(false)
 
   function toggleSlam() {
     isSlamRunning.value = !isSlamRunning.value
@@ -97,38 +101,90 @@
   onMounted(async () => {
     await dockStore.fetchDockConfigs()
     await dockStore.fetchOnlineRobots()
-
     const ROSLIB = (window as any).ROSLIB
+    const ROS2D = (window as any).ROS2D
+    // console.log(ROSLIB)
+    // console.log(ROS2D)
+
     activeRobots.value.forEach(robot => {
       const ros = new ROSLIB.Ros({
         url: `ws://${robot.ip}:9090`
       })
       rosConnections.push(ros)
-      ros.on('connection', () => {
-        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
-      })
-      ros.on('error', (error: any) => {
-        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
-      })
-      ros.on('close', () => {
-        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
-      })
 
       const statusListener = new ROSLIB.Topic({
         ros: ros,
-        name: "/couliglig_bot_6/robot_state",
+        name: `/${robot.namespace}/robot_state`,
         messageType: "custom_msgs/CouligligStatus"
       })
 
-      statusListener.subscribe((msg: any) => {
-        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
-        const state = msg.state
-        dockStore.updateRobotStatus(robot.ip, state)
+      ros.on('connection', () => {
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+        statusListener.subscribe((msg: any) => {
+          console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+          const state = msg.state
+          dockStore.updateRobotStatus(robot.ip, state)
+        })
+
+        const viewer = new ROS2D.Viewer({
+          divID: `map`,
+          width: 700,
+          height: 700
+        })
+
+        const gridClient = new ROS2D.OccupancyGridClient({
+          ros: ros,
+          rootObject: viewer.scene,
+          continuous: false,
+          topic: '/map'
+        })
+        // Listen for changes in the occupancy grid and update the viewer accordingly
+        gridClient.on('change', () => {
+          const grid = gridClient.currentGrid;
+          if (!grid) return;
+
+          mapAvailable.value = true;
+          viewer.scaleToDimensions(grid.width, grid.height);
+          viewer.shift(
+            grid.pose.position.x,
+            grid.pose.position.y
+          );
+
+          console.log('[MAP INFO]', {
+            resolution: grid.resolution,
+            width: grid.width,
+            height: grid.height,
+            origin: grid.pose.position
+          });
+        });  
+      })
+
+      ros.on('error', (error: any) => {
+        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
+      })
+
+
+      ros.on('close', () => {
+        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
       })
     })
   })
+
   onUnmounted(() => {
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
   })
+
+  function waitForROS2D() {
+  return new Promise(resolve => {
+    const check = () => {
+      if ((window as any).ROS2D?.Viewer) {
+        resolve((window as any).ROS2D)
+      } else {
+        setTimeout(check, 50)
+      }
+    }
+    check()
+  })
+}
 </script>

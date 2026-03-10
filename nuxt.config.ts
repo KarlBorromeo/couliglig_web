@@ -14,9 +14,21 @@ export default defineNuxtConfig({
     head: {
       script: [
         {
+          src: "/eventemitter2.min.js",
+          defer: true
+        },
+        {
+          src: "/easeljs.min.js",
+          defer: true
+        },
+        {
           src: "/roslib.min.js",
           defer: true
-        }
+        },
+        {
+          src: "/ros2d.min.js",
+          defer: true
+        },
       ]
     }
   },
