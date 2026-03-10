@@ -1,0 +1,10 @@
+version: "3.8"
+
+services:
+  nuxt:
+    build: .
+    image: couliglig_web
+    container_name: couliglig_web_app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
