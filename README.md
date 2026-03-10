@@ -75,9 +75,12 @@ bun run preview
 Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
 
 
+<!-- manual pull and changes -->
 sudo docker stop couliglig_web_app
 sudo docker rm couliglig_web_app
 sudo docker build --no-cache -t couliglig_web .
 sudo docker run -d -p 3000:3000 --name couliglig_web_app --restart unless-stopped couliglig_web
 
-docker compose up -d --build
+<!-- pull and update changes -->
+git pull
+sudo docker-compose up -d --build
