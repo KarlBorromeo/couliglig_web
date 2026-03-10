@@ -117,7 +117,7 @@
       })
 
       ros.on('connection', () => {
-        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+        // console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
         statusListener.subscribe((msg: any) => {
           console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
           const state = msg.state
@@ -181,12 +181,12 @@
         viewer.scaleToDimensions(grid.width, grid.height)
         viewer.shift(grid.pose.position.x, grid.pose.position.y)
 
-        console.log('[MAP INFO]', {
-            resolution: grid.resolution,
-            width: grid.width,
-            height: grid.height,
-            origin: grid.pose.position
-          });
+        // console.log('[MAP INFO]', {
+        //   resolution: grid.resolution,
+        //   width: grid.width,
+        //   height: grid.height,
+        //   origin: grid.pose.position
+        // });
       })
     })
   })
