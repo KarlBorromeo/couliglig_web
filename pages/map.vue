@@ -63,9 +63,10 @@
         <v-btn :disabled="!selectedRobot" elevation="2" color="error" @click="stopRobotMapping" prepend-icon="mdi-stop" v-else>
           Stop Slam
         </v-btn>
-        <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" variant="outlined" prepend-icon="mdi-refresh">Status</v-btn>
-        <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" elevation="2" color="success" prepend-icon="mdi-content-save">Save Map</v-btn>
+        <v-btn :disabled="!selectedRobot" variant="outlined" prepend-icon="mdi-refresh" @click="requestStatusMapping">Status</v-btn>
+        <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" elevation="2" color="success" prepend-icon="mdi-content-save" @click="saveMap">Save Map</v-btn>
       </section>
+      <p>{{ statusText }}</p>
     </v-col>
 
     <v-card elevation="3">
@@ -76,8 +77,7 @@
           <span id="map"/>
         </div>
       </v-card-text>
-    </v-card> 
-    {{ activeRobots }}
+    </v-card>
     <Snackbar ref="snackbar" />
   </v-container>
 </template>
@@ -101,7 +101,7 @@ import Snackbar from '~/components/snackbar.vue'
   let selectedRobot = ref(null)
   const rosConnections: any[] = []
 
-  async function toggleMapping(robotIp: string, command: string) {
+  async function toggleRequestMapping(robotIp: string, command: string) {
     try{
       const res = await fetch(`http://${robotIp}:8000/roslib/slam`, 
         {
@@ -110,12 +110,44 @@ import Snackbar from '~/components/snackbar.vue'
           headers: { "Content-Type": "application/json" } 
         }
       )
+      const data = await res.json()
+      statusText.value = data.message
       if (!res.ok) {
         throw new Error(`Failed to start mapping: ${res.statusText}`)
       }
     } catch (error) {
       snackbar?.value.showSnackbar(error, "error")
     }
+  }
+
+  async function saveMap() {
+      try {
+          const response = await fetch(`http://${selectedRobot.value}:8000/slam/save-map`, {
+              method: 'POST'
+          });
+
+          if (!response.ok) {
+              const error = await response.json();
+              snackbar?.value.showSnackbar("❌ Error: " + error.detail, "error");
+              return;
+          }
+
+          const blob = await response.blob();
+
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `couliglig_map_${Date.now()}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+
+          snackbar?.value.showSnackbar("✅ Map saved and downloaded successfully.", "success");
+
+      } catch (err) {
+          snackbar?.value.showSnackbar("❌ Failed to save map.", "error");
+      }
   }
   
   function refreshRobots() {
@@ -127,16 +159,23 @@ import Snackbar from '~/components/snackbar.vue'
     return robot?.status.toUpperCase() === "MAPPING"
   }
 
-  const runningRobots = ref<string[]>([])
   function startRobotMapping() {
     const selectedRobotIp = selectedRobot.value? selectedRobot.value : ""
     if (!selectedRobotIp) return
-    toggleMapping(selectedRobotIp, "start")
+    toggleRequestMapping(selectedRobotIp, "start")
   }
+
   function stopRobotMapping() {
     const selectedRobotIp = selectedRobot.value? selectedRobot.value : ""
     if (!selectedRobotIp) return
-    toggleMapping(selectedRobotIp, "stop")
+    toggleRequestMapping(selectedRobotIp, "stop")
+  }
+
+  const statusText = ref("")
+  function requestStatusMapping() {
+    const selectedRobotIp = selectedRobot.value? selectedRobot.value : ""
+    if (!selectedRobotIp) return
+    toggleRequestMapping(selectedRobotIp, "status")
   }
 
   onMounted(async () => {
