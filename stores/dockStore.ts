@@ -5,6 +5,9 @@ export const useDockStore = defineStore("dock", {
   state: () => ({
     dockConfigs: [] as dockConfigs[],
     onlineRobots: [] as onlineRobot[],
+    toMappingRobots : [] as onlineRobot[],
+    toLaunchRobots : [] as onlineRobot[],
+    toDockRobots : [] as onlineRobot[],
     docks: [] as Docks[],
   }),
   actions: {
@@ -78,11 +81,26 @@ export const useDockStore = defineStore("dock", {
             return [];
         }
     },
+    fetchToMappingRobots() {
+        //console.log("Filtering to mapping robots from online robots:", this.onlineRobots);
+        this.toMappingRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'MAPPING' || robot.status.toUpperCase() === 'IDLE');
+    },
+    fetchToLaunchRobots() {
+        //console.log("Filtering to launch robots from online robots:", this.onlineRobots);
+        this.toLaunchRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'IDLE');
+    },
+    fetchToDockRobots() {
+        //console.log("Filtering to dock robots from online robots:", this.onlineRobots);
+        this.toDockRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'NAVIGATING');
+    },
     updateRobotStatus(ip: string, status: string) {
         const robotIndex = this.onlineRobots.findIndex(robot => robot.ip === ip);
         if (robotIndex !== -1) {
             this.onlineRobots[robotIndex].status = status;
         }
+        this.fetchToLaunchRobots();
+        this.fetchToDockRobots();
+        this.fetchToMappingRobots();
     },
     async deleteDockConfig(configId: number) {
         try {

@@ -95,9 +95,7 @@ import Snackbar from '~/components/snackbar.vue'
     'Status',
     'Select'
   ]
-  const activeRobots = computed(() => {
-    return dockStore.onlineRobots
-  })
+  const activeRobots = computed(() => dockStore.toMappingRobots)
   let selectedRobot = ref(null)
   const rosConnections: any[] = []
 
@@ -189,8 +187,8 @@ import Snackbar from '~/components/snackbar.vue'
 
     const ROSLIB = (window as any).ROSLIB
     const ROS2D = (window as any).ROS2D
-
-    activeRobots.value.forEach((robot: any) => {
+    const onlineRobots = dockStore.onlineRobots
+    onlineRobots.forEach((robot: any) => {
       const ros = new ROSLIB.Ros({
         url: `ws://${robot.ip}:9090`
       })

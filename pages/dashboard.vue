@@ -87,12 +87,12 @@ import Snackbar from '~/components/snackbar.vue'
 
       const statusListener = new ROSLIB.Topic({
         ros: ros,
-        name: "/couliglig_bot_6/robot_state",
+        name: `/${robot.namespace}/robot_state`,
         messageType: "custom_msgs/CouligligStatus"
       })
 
       statusListener.subscribe((msg: any) => {
-        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+        // console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
         const state = msg.state
         dockStore.updateRobotStatus(robot.ip, state)
       })

@@ -37,7 +37,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="activeRobot in activeRobots"
+              v-for="activeRobot in toLaunchRobots"
               :key="activeRobot.ip"
             >
               <td>{{ activeRobot.hostname }}</td>
@@ -59,7 +59,7 @@
               <td>
                 {{ activeRobot.status }}
               </td>
-              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
+              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"  v-if="activeRobot.status.toUpperCase() === 'IDLE'"></v-checkbox></td>
             </tr>
           </tbody>
           <v-footer class="d-flex align-center">
@@ -86,7 +86,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="activeRobot in activeRobots"
+              v-for="activeRobot in navigatingRobots"
               :key="activeRobot.ip"
             >
               <td>{{ activeRobot.hostname }}</td>
@@ -108,7 +108,7 @@
               <td>
                 {{ activeRobot.status }}
               </td>
-              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
+              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'NAVIGATING'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
             </tr>
           </tbody>
           <v-footer class="d-flex align-center">
@@ -151,6 +151,7 @@
         </v-table>
       </v-card>
     </v-col>
+    {{ toLaunchRobots }}
     <Snackbar ref="snackbar" />
   </v-container>
 </template>
@@ -164,13 +165,9 @@ import Snackbar from '~/components/snackbar.vue'
   const selectedDockConfig = ref<number | null>(null)
   const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
-  // const docks = [
-  //   { id: 'Dock 1', x: '2.5', y: '3.0', theta: '90°', arucoId: 'Aruco 1' },
-  //   { id: 'Dock 2', x: '5.0', y: '1.5', theta: '180°', arucoId: 'Aruco 2' },
-  //   { id: 'Dock 3', x: '1.0', y: '4.0', theta: '270°', arucoId: 'Aruco 3' },
-  // ]
   const dockConfigs = computed(() => dockStore.dockConfigs)
-  const activeRobots = computed(() => dockStore.onlineRobots)
+  const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
+  const navigatingRobots = computed(() => dockStore.toDockRobots)
   const docks = computed(() => dockStore.docks)
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)
@@ -188,9 +185,9 @@ import Snackbar from '~/components/snackbar.vue'
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
     }
-
+    const onlineRobots = dockStore.onlineRobots
     const ROSLIB = (window as any).ROSLIB
-    activeRobots.value.forEach(robot => {
+    onlineRobots.forEach(robot => {
       const ros = new ROSLIB.Ros({
         url: `ws://${robot.ip}:9090`
       })
