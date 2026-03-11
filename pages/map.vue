@@ -39,13 +39,15 @@
               </v-icon>
               {{ item.battery }}%
             </td>
+            <td>{{ item.status }}</td>
             <td>
               <v-radio-group
                 v-model="selectedRobot"
                 inline
                 hide-details
+                v-if="item.status.toUpperCase() === 'IDLE' || item.status.toUpperCase() === 'MAPPING'"
               >
-                <v-radio :value="item.hostname" />
+                <v-radio :value="item.ip" />
               </v-radio-group>
             </td>
           </tr>
@@ -55,11 +57,14 @@
 
     <v-col>
       <section class="d-flex flex-wrap ga-2">
-        <v-btn :disabled="!selectedRobot" elevation="2" :color="isSlamRunning ? 'error' : 'primary'" @click="toggleSlam" :prepend-icon="isSlamRunning ? 'mdi-stop' : 'mdi-play'">
-          {{ isSlamRunning ? 'Stop Slam' : 'Start Slam' }}
+        <v-btn :disabled="!selectedRobot" elevation="2" color="primary" @click="startRobotMapping" prepend-icon="mdi-play" v-if="!isSelectedRobotMapping()">
+          Start Slam
         </v-btn>
-        <v-btn :disabled="!selectedRobot || !isSlamRunning" variant="outlined" prepend-icon="mdi-refresh">Status</v-btn>
-        <v-btn :disabled="!selectedRobot || !isSlamRunning" elevation="2" color="success" prepend-icon="mdi-content-save">Save Map</v-btn>
+        <v-btn :disabled="!selectedRobot" elevation="2" color="error" @click="stopRobotMapping" prepend-icon="mdi-stop" v-else>
+          Stop Slam
+        </v-btn>
+        <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" variant="outlined" prepend-icon="mdi-refresh">Status</v-btn>
+        <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" elevation="2" color="success" prepend-icon="mdi-content-save">Save Map</v-btn>
       </section>
     </v-col>
 
@@ -72,6 +77,7 @@
         </div>
       </v-card-text>
     </v-card> 
+    {{ activeRobots }}
     <Snackbar ref="snackbar" />
   </v-container>
 </template>
@@ -86,19 +92,51 @@ import Snackbar from '~/components/snackbar.vue'
     'Namespace',
     'IP Address',
     'Battery (%)',
-    'Mapping'
+    'Status',
+    'Select'
   ]
-  const activeRobots = computed(() => dockStore.onlineRobots)
+  const activeRobots = computed(() => {
+    return dockStore.onlineRobots
+  })
   let selectedRobot = ref(null)
-  let isSlamRunning = ref(false)
   const rosConnections: any[] = []
 
-  function toggleSlam() {
-    isSlamRunning.value = !isSlamRunning.value
+  async function toggleMapping(robotIp: string, command: string) {
+    try{
+      const res = await fetch(`http://${robotIp}:8000/roslib/slam`, 
+        {
+          method: "POST",
+          body: JSON.stringify({ command : command }),
+          headers: { "Content-Type": "application/json" } 
+        }
+      )
+      if (!res.ok) {
+        throw new Error(`Failed to start mapping: ${res.statusText}`)
+      }
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    }
   }
   
   function refreshRobots() {
     dockStore.fetchOnlineRobots()
+  }
+
+  function isSelectedRobotMapping() {
+    const robot = activeRobots.value.find(r => r.ip === selectedRobot.value)
+    return robot?.status.toUpperCase() === "MAPPING"
+  }
+
+  const runningRobots = ref<string[]>([])
+  function startRobotMapping() {
+    const selectedRobotIp = selectedRobot.value? selectedRobot.value : ""
+    if (!selectedRobotIp) return
+    toggleMapping(selectedRobotIp, "start")
+  }
+  function stopRobotMapping() {
+    const selectedRobotIp = selectedRobot.value? selectedRobot.value : ""
+    if (!selectedRobotIp) return
+    toggleMapping(selectedRobotIp, "stop")
   }
 
   onMounted(async () => {
@@ -113,7 +151,7 @@ import Snackbar from '~/components/snackbar.vue'
     const ROSLIB = (window as any).ROSLIB
     const ROS2D = (window as any).ROS2D
 
-    activeRobots.value.forEach(robot => {
+    activeRobots.value.forEach((robot: any) => {
       const ros = new ROSLIB.Ros({
         url: `ws://${robot.ip}:9090`
       })
@@ -145,12 +183,10 @@ import Snackbar from '~/components/snackbar.vue'
     rosConnections.forEach((ros) => ros.close())
   })
   
-
   const ros = ref<any>(null)
-
-  watch(selectedRobot, (robotName) => {
-
-    const robot = activeRobots.value.find(r => r.hostname === robotName)
+  watch(selectedRobot, (robotIp) => {
+    console.log("Selected robot IP:", robotIp)
+    const robot = activeRobots.value.find(r => r.ip === robotIp)
     if (!robot) return
 
     // close previous connection

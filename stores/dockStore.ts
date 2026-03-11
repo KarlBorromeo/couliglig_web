@@ -71,7 +71,7 @@ export const useDockStore = defineStore("dock", {
             this.onlineRobots = robots.map((robot: onlineRobot) => ({
                 ...robot,
                 battery: Math.floor(Math.random() * 100) + 1, // Simulate battery level
-                status: "Idle" // Default status, can be updated based on real data
+                status: "" // Default status, can be updated based on real data
             }));
         } catch (error) {
             console.error("Error fetching online robots:", error);

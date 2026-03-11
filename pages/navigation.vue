@@ -226,7 +226,13 @@ import Snackbar from '~/components/snackbar.vue'
   watch (selectedDockConfig, async (newConfigId) => {
     console.log("Selected dock config ID:", newConfigId)
     if (newConfigId) {
-      await dockStore.fetchDocks(newConfigId)
+      try{
+        // await Promise.reject(new Error("Simulated fetch error"))
+        await dockStore.fetchDocks(newConfigId)
+      } catch (error) {
+        snackbar?.value.showSnackbar(error, "error")
+      }
+      
     }
   })
 </script>
