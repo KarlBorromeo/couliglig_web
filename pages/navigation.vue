@@ -59,11 +59,11 @@
               <td>
                 {{ activeRobot.status }}
               </td>
-              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"  v-if="activeRobot.status.toUpperCase() === 'IDLE'"></v-checkbox></td>
+              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobotsToLaunch" :value="activeRobot.ip"  v-if="activeRobot.status.toUpperCase() === 'IDLE'"></v-checkbox></td>
             </tr>
           </tbody>
           <v-footer class="d-flex align-center">
-            <v-btn variant="flat" prepend-icon="mdi-play" :disabled="selectedRobots.length === 0 || !selectedDockConfig" :color="selectedRobots.length === 0 || !selectedDockConfig ? '' : 'primary'" size="small">Execute launch</v-btn>
+            <v-btn variant="flat" prepend-icon="mdi-play" :disabled="selectedRobotsToLaunch.length === 0 || !selectedDockConfig" :color="selectedRobotsToLaunch.length === 0 || !selectedDockConfig ? '' : 'primary'" @click="launchRobots">Execute launch</v-btn>
           </v-footer>
         </v-table>
       </v-card>
@@ -86,7 +86,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="activeRobot in navigatingRobots"
+              v-for="activeRobot in toDockRobots"
               :key="activeRobot.ip"
             >
               <td>{{ activeRobot.hostname }}</td>
@@ -108,13 +108,41 @@
               <td>
                 {{ activeRobot.status }}
               </td>
-              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'NAVIGATING'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
+              <td>
+                <v-radio-group
+                  v-model="selectedRobotToDock"
+                  inline
+                  hide-details
+                  v-if="activeRobot.status.toUpperCase() === 'READY'"
+                >
+                  <v-radio :value="activeRobot.ip" />
+                </v-radio-group>
+              </td>
             </tr>
           </tbody>
-          <v-footer class="d-flex align-center">
-            <v-btn variant="flat" prepend-icon="mdi-play" :disabled="selectedRobots.length === 0 || !selectedDockConfig" :color="selectedRobots.length === 0 || !selectedDockConfig ? '' : 'primary'" size="small">Dock Robot</v-btn>
-          </v-footer>
         </v-table>
+        <v-footer >
+          <v-row>
+            <v-col cols="auto">
+              <v-btn variant="flat" prepend-icon="mdi-play" :disabled="!selectedRobotToDock || !selectedDockConfig || !selectedDockId" :color="!selectedRobotToDock || !selectedDockConfig || !selectedDockId ? '' : 'primary'" @click="dockRobot">Dock Robot</v-btn>
+            </v-col>
+            <v-col cols="12" sm="5" md="4" lg="3" xl="2">
+              <v-select
+                :items="docks"
+                item-title="dock_id"
+                item-value="dock_id"
+                label="Select Dock"
+                v-model="selectedDockId"
+                variant="outlined"
+                hide-details
+                density="compact"
+                class="ml-4"
+                hint="Pick your favorite states"
+                persistent-hint
+              />
+            </v-col>
+          </v-row>
+          </v-footer>
       </v-card>
     </v-col>
 
@@ -146,12 +174,11 @@
             </tr>
           </tbody>
           <v-footer class="d-flex align-center">
-            <v-btn variant="flat" prepend-icon="mdi-chart-timeline-variant-shimmer" color="primary" size="small">Update Dock States</v-btn>
+            <v-btn variant="flat" prepend-icon="mdi-chart-timeline-variant-shimmer" color="primary">Update Dock States</v-btn>
           </v-footer>
         </v-table>
       </v-card>
     </v-col>
-    {{ toLaunchRobots }}
     <Snackbar ref="snackbar" />
   </v-container>
 </template>
@@ -161,19 +188,69 @@ import Snackbar from '~/components/snackbar.vue'
 
 
   const dockStore = useDockStore()
-  const selectedRobots = ref<string[]>([])
+  const selectedRobotsToLaunch = ref<string[]>([])
+  const selectedRobotToDock = ref(null)
   const selectedDockConfig = ref<number | null>(null)
+  const selectedDockId = ref(null)
   const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
-  const navigatingRobots = computed(() => dockStore.toDockRobots)
+  const toDockRobots = computed(() => dockStore.toDockRobots)
   const docks = computed(() => dockStore.docks)
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)
 
   function refreshRobots() {
     dockStore.fetchOnlineRobots()
+  }
+
+  async function launchRobots() {
+    try {
+      const robot_data = selectedRobotsToLaunch.value.map(ip => {
+        const robot = toLaunchRobots.value.find(robot => robot.ip === ip)
+        if (robot) {
+          return {
+            namespace: robot.namespace,
+            robot_ip: robot.ip
+          }
+        } else {
+          throw new Error(`Robot with IP ${ip} not found in toLaunchRobots`)
+        } 
+      })
+      selectedRobotsToLaunch.value = []
+      await dockStore.actionRunNavigation(selectedDockConfig.value!, robot_data)
+      snackbar?.value.showSnackbar("Navigation launched successfully", "success")
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    }
+
+  }
+
+  async function dockRobot() {
+    try {
+      if (!selectedRobotToDock.value || !selectedDockConfig.value || !selectedDockId.value) {
+        throw new Error("Please select a robot, dock configuration, and dock to proceed with docking.")
+      }
+
+      const selectedRobot = toDockRobots.value.find(robot => robot.ip === selectedRobotToDock.value)
+      if (!selectedRobot) {
+        throw new Error(`Selected robot with IP ${selectedRobotToDock.value} not found in navigating robots.`)
+      }
+
+      const formData = new FormData();
+      formData.append("dock_id", selectedDockId.value);
+      const response = await fetch(`http://${selectedRobot.ip}:8000/roslib/dock`, {
+          method: "POST",
+          body: formData
+      });
+
+      const result = await response.json();
+      console.log(result)
+      snackbar?.value.showSnackbar(result.message, "success")
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    }
   }
 
   onMounted(async () => {
@@ -222,6 +299,9 @@ import Snackbar from '~/components/snackbar.vue'
 
   watch (selectedDockConfig, async (newConfigId) => {
     console.log("Selected dock config ID:", newConfigId)
+    selectedDockId.value = null
+    selectedRobotToDock.value = null
+    selectedRobotsToLaunch.value = []
     if (newConfigId) {
       try{
         // await Promise.reject(new Error("Simulated fetch error"))

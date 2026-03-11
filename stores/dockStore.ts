@@ -87,11 +87,11 @@ export const useDockStore = defineStore("dock", {
     },
     fetchToLaunchRobots() {
         //console.log("Filtering to launch robots from online robots:", this.onlineRobots);
-        this.toLaunchRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'IDLE');
+        this.toLaunchRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'IDLE' || robot.status.toUpperCase() === 'PROCESSING');
     },
     fetchToDockRobots() {
         //console.log("Filtering to dock robots from online robots:", this.onlineRobots);
-        this.toDockRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'NAVIGATING');
+        this.toDockRobots = this.onlineRobots.filter(robot => robot.status.toUpperCase() === 'NAVIGATING' || robot.status.toUpperCase() === 'READY');
     },
     updateRobotStatus(ip: string, status: string) {
         const robotIndex = this.onlineRobots.findIndex(robot => robot.ip === ip);
@@ -119,6 +119,22 @@ export const useDockStore = defineStore("dock", {
             this.docks = response.data;
         } catch (error) {
             console.error("Error fetching docks:", error);
+        }
+    },
+    async actionRunNavigation(config_id: number | null, robot_data : robotData[]) {
+        try {
+            // await Promise.reject(new Error("Simulated navigation launch error"))
+            console.log("Launching navigation with config_id:", config_id, "and robot_data:", robot_data);
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}actions/run_nav`, 
+                { 
+                    config_id, 
+                    robot_data
+                });
+            console.log("Navigation launched successfully");
+        } catch (error) {
+            console.error("Error launching navigation:", error);
+             throw new Error(`Error launching navigation`);
         }
     }
   },
@@ -166,4 +182,8 @@ interface Docks {
     y: number;
     theta: number;
     aruco_id: number;
+}
+interface robotData {
+    namespace: string;
+    robot_ip: string;
 }
