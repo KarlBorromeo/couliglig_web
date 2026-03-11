@@ -39,9 +39,12 @@
         </tbody>
       </v-table>
     </v-card>
+    <Snackbar ref="snackbar" />
   </v-container>
 </template>
 <script setup lang="ts">
+import Snackbar from '~/components/snackbar.vue'
+  const snackbar = ref<any>(null)
   const dockStore = useDockStore()
   const activeRobotHeader = [
     'Robot name',
@@ -58,8 +61,13 @@
   }
 
   onMounted(async () => {
-    await dockStore.fetchDockConfigs()
-    await dockStore.fetchOnlineRobots()
+    try{
+      // await Promise.reject(new Error("Simulated fetch error"))
+      await dockStore.fetchOnlineRobots()
+    } catch (error) {
+      // console.error("Error fetching dock configs or online robots:", error)
+      snackbar?.value.showSnackbar(error, "error")
+    }
 
     const ROSLIB = (window as any).ROSLIB
     activeRobots.value.forEach(robot => {

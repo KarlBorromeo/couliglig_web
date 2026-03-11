@@ -4,7 +4,8 @@ import axios from "axios";
 export const useDockStore = defineStore("dock", {
   state: () => ({
     dockConfigs: [] as dockConfigs[],
-    onlineRobots: [] as onlineRobot[]
+    onlineRobots: [] as onlineRobot[],
+    docks: [] as Docks[],
   }),
   actions: {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
@@ -56,6 +57,7 @@ export const useDockStore = defineStore("dock", {
             const baseurl = useRuntimeConfig().public.baseURL;
             const response = await axios.get(`${baseurl}dock/configs`);
             this.dockConfigs = response.data;
+            console.log("Fetched dock configurations:", this.dockConfigs);
         } catch (error) {
             console.error("Error fetching dock configurations:", error);
         }
@@ -92,6 +94,15 @@ export const useDockStore = defineStore("dock", {
             console.error("Error deleting dock configuration:", error);
         }
     },
+    async fetchDocks(configID: number) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}dock`, { params: { config_id: configID } });
+            this.docks = response.data;
+        } catch (error) {
+            console.error("Error fetching docks:", error);
+        }
+    }
   },
 });
 
@@ -125,6 +136,16 @@ interface onlineRobot {
     namespace: string;
     ros_domain_id: string;
     battery: number; //TODO: replace with real battery data from backend
-    status: string; //TODO: replace with real status data from roslib
+    status: string; 
     timestamp: number;
+}
+interface Docks {
+    id: number;
+    config_id: number;
+    dock_id: string;
+    dock_type: string;
+    x: number;
+    y: number;
+    theta: number;
+    aruco_id: number;
 }

@@ -19,10 +19,11 @@
         <p class="text-caption">Description: {{ selectedDockConfig ? dockConfigs.find(config => config.id === selectedDockConfig)?.description : '' }}</p>
       </section>
     </v-col>
+
     <v-col>
       <v-card elevation="3">
         <v-card-title class="d-flex align-center">
-          <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Online Robots</span></p>
+          <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-launch</v-icon><span class="ml-1">Launch Robots</span></p>
           <v-spacer></v-spacer>
           <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
         </v-card-title>
@@ -71,6 +72,55 @@
     <v-col>
       <v-card elevation="3">
         <v-card-title class="d-flex align-center">
+          <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot-mower</v-icon><span class="ml-1">Dock Robots</span></p>
+          <v-spacer></v-spacer>
+          <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
+        </v-card-title>
+        <v-table>
+          <thead>
+            <tr>
+              <th v-for="header in activeRobotHeaders" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
+                {{ header }}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="activeRobot in activeRobots"
+              :key="activeRobot.ip"
+            >
+              <td>{{ activeRobot.hostname }}</td>
+              <td>{{ activeRobot.namespace }}</td>
+              <td>{{ activeRobot.ip }}</td>
+              <td>{{ activeRobot.ros_domain_id }}</td>
+              <td>
+                <v-icon color="green" v-if="activeRobot.battery > 75">
+                  mdi-battery-high
+                </v-icon>
+                <v-icon color="orange" v-else-if="activeRobot.battery > 50">
+                  mdi-battery-medium
+                </v-icon>
+                <v-icon color="red" v-else>
+                  mdi-battery-low
+                </v-icon>
+                {{ activeRobot.battery }}%
+              </td>
+              <td>
+                {{ activeRobot.status }}
+              </td>
+              <td><v-checkbox hide-details :disabled="activeRobot.status.toUpperCase() !== 'IDLE'" v-model="selectedRobots" :value="activeRobot.ip"></v-checkbox></td>
+            </tr>
+          </tbody>
+          <v-footer class="d-flex align-center">
+            <v-btn variant="flat" prepend-icon="mdi-play" :disabled="selectedRobots.length === 0 || !selectedDockConfig" :color="selectedRobots.length === 0 || !selectedDockConfig ? '' : 'primary'" size="small">Dock Robot</v-btn>
+          </v-footer>
+        </v-table>
+      </v-card>
+    </v-col>
+
+    <v-col>
+      <v-card elevation="3">
+        <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-package-variant</v-icon><span class="ml-1">Spawn Box</span></p>
           <v-spacer></v-spacer>
           <v-btn variant="flat" prepend-icon="mdi-refresh">Refresh</v-btn>
@@ -85,11 +135,11 @@
           </thead>
           <tbody>
             <tr v-for="dock in docks" :key="dock.id">
-              <td>{{ dock.id }}</td>
+              <td>{{ dock.dock_id}}</td>
               <td>{{ dock.x }}</td>
               <td>{{ dock.y }}</td>
               <td>{{ dock.theta }}</td>
-              <td>{{ dock.arucoId }}</td>
+              <td>{{ dock.aruco_id }}</td>
               <td>
                 <v-switch inset hide-details color="primary"></v-switch>
               </td>
@@ -101,31 +151,43 @@
         </v-table>
       </v-card>
     </v-col>
+    <Snackbar ref="snackbar" />
   </v-container>
 </template>
 
 <script setup lang="ts">
+import Snackbar from '~/components/snackbar.vue'
+
+
   const dockStore = useDockStore()
   const selectedRobots = ref<string[]>([])
   const selectedDockConfig = ref<number | null>(null)
   const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
-  const docks = [
-    { id: 'Dock 1', x: '2.5', y: '3.0', theta: '90°', arucoId: 'Aruco 1' },
-    { id: 'Dock 2', x: '5.0', y: '1.5', theta: '180°', arucoId: 'Aruco 2' },
-    { id: 'Dock 3', x: '1.0', y: '4.0', theta: '270°', arucoId: 'Aruco 3' },
-  ]
+  // const docks = [
+  //   { id: 'Dock 1', x: '2.5', y: '3.0', theta: '90°', arucoId: 'Aruco 1' },
+  //   { id: 'Dock 2', x: '5.0', y: '1.5', theta: '180°', arucoId: 'Aruco 2' },
+  //   { id: 'Dock 3', x: '1.0', y: '4.0', theta: '270°', arucoId: 'Aruco 3' },
+  // ]
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const activeRobots = computed(() => dockStore.onlineRobots)
+  const docks = computed(() => dockStore.docks)
   const rosConnections: any[] = []
+  const snackbar = ref<any>(null)
 
   function refreshRobots() {
     dockStore.fetchOnlineRobots()
   }
 
   onMounted(async () => {
-    await dockStore.fetchDockConfigs()
-    await dockStore.fetchOnlineRobots()
+    try{
+      // await Promise.reject(new Error("Simulated fetch error"))
+      await dockStore.fetchDockConfigs()
+      await dockStore.fetchOnlineRobots()
+    } catch (error) {
+      // console.error("Error fetching dock configs or online robots:", error)
+      snackbar?.value.showSnackbar(error, "error")
+    }
 
     const ROSLIB = (window as any).ROSLIB
     activeRobots.value.forEach(robot => {
@@ -145,12 +207,12 @@
 
       const statusListener = new ROSLIB.Topic({
         ros: ros,
-        name: "/couliglig_bot_6/robot_state",
+        name: `/${robot.namespace}/robot_state`,
         messageType: "custom_msgs/CouligligStatus"
       })
 
       statusListener.subscribe((msg: any) => {
-        console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+        // console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
         const state = msg.state
         dockStore.updateRobotStatus(robot.ip, state)
       })
@@ -159,5 +221,12 @@
   onUnmounted(() => {
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
+  })
+
+  watch (selectedDockConfig, async (newConfigId) => {
+    console.log("Selected dock config ID:", newConfigId)
+    if (newConfigId) {
+      await dockStore.fetchDocks(newConfigId)
+    }
   })
 </script>
