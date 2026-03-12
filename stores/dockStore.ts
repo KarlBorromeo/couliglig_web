@@ -136,6 +136,20 @@ export const useDockStore = defineStore("dock", {
             console.error("Error launching navigation:", error);
              throw new Error(`Error launching navigation`);
         }
+    },
+    async actionStopNavigation(config_id: number | null, robot_data : robotData[]) {
+        try {
+            console.log("Stopping navigation with config_id:", config_id, "and robot_data:", robot_data);
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const res = await axios.post(`${baseurl}actions/stop_nav`, { config_id, robot_data });
+            return {
+                successful: res.data.successful,
+                message: res.data.failed
+            }
+        } catch (error) {
+            console.error("Error stopping navigation:", error);
+            throw new Error(`Error stopping navigation`);
+        }
     }
   },
 });

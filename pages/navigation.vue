@@ -30,7 +30,7 @@
         <v-table>
           <thead>
             <tr>
-              <th v-for="header in activeRobotHeaders" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
+              <th v-for="header in toLaunchRobotHeaders" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
                 {{ header }}
               </th>
             </tr>
@@ -79,7 +79,7 @@
         <v-table>
           <thead>
             <tr>
-              <th v-for="header in activeRobotHeaders" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
+              <th v-for="header in toDockRobotHeaders" :key="header" class="font-weight-bold" style="color: rgb(105, 105, 105);">
                 {{ header }}
               </th>
             </tr>
@@ -118,15 +118,18 @@
                   <v-radio :value="activeRobot.ip" />
                 </v-radio-group>
               </td>
+              <td>
+                <v-btn variant="flat" density="comfortable" rounded="xl" size="small" color="error" block icon @click="stopRobot(activeRobot.ip)">Stop</v-btn>
+              </td>
             </tr>
           </tbody>
         </v-table>
         <v-footer >
-          <v-row>
+          <v-row >
             <v-col cols="auto">
               <v-btn variant="flat" prepend-icon="mdi-play" :disabled="!selectedRobotToDock || !selectedDockConfig || !selectedDockId" :color="!selectedRobotToDock || !selectedDockConfig || !selectedDockId ? '' : 'primary'" @click="dockRobot">Dock Robot</v-btn>
             </v-col>
-            <v-col cols="12" sm="5" md="4" lg="3" xl="2">
+            <v-col cols="12" sm="4" md="4" lg="3" xl="2">
               <v-select
                 :items="docks"
                 item-title="dock_id"
@@ -141,6 +144,7 @@
                 persistent-hint
               />
             </v-col>
+            <v-spacer />
           </v-row>
           </v-footer>
       </v-card>
@@ -192,7 +196,8 @@ import Snackbar from '~/components/snackbar.vue'
   const selectedRobotToDock = ref(null)
   const selectedDockConfig = ref<number | null>(null)
   const selectedDockId = ref(null)
-  const activeRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
+  const toLaunchRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
+  const toDockRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select', 'Stop']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
@@ -248,6 +253,33 @@ import Snackbar from '~/components/snackbar.vue'
       const result = await response.json();
       console.log(result)
       snackbar?.value.showSnackbar(result.message, "success")
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    }
+  }
+
+  async function stopRobot(robotIp: string){
+    try {
+      const selectedStopRobot = toDockRobots.value.find(robot => robot.ip === robotIp)
+      if (!selectedStopRobot) {
+        throw new Error(`Selected robot with IP ${robotIp} not found in navigating robots.`)
+      }
+      const formData = new URLSearchParams({
+        command: "stop",
+        enable_commander: "true",
+        x_val: "0.0",
+        y_val: "0.0"
+      })
+      const response = await fetch(`http://${selectedStopRobot.ip}:8000/roslib/nav`, {
+          method: "POST",
+          body: formData,
+      });
+      const res = await response.json()
+      if (res.success) {
+        snackbar?.value.showSnackbar(res.message, "success")
+      } else {
+        throw new Error(res.message || "Failed to stop the robot.")
+      }
     } catch (error) {
       snackbar?.value.showSnackbar(error, "error")
     }

@@ -66,7 +66,7 @@
         <v-btn :disabled="!selectedRobot" variant="outlined" prepend-icon="mdi-refresh" @click="requestStatusMapping">Status</v-btn>
         <v-btn :disabled="!selectedRobot || !isSelectedRobotMapping()" elevation="2" color="success" prepend-icon="mdi-content-save" @click="saveMap">Save Map</v-btn>
       </section>
-      <p>{{ statusText }}</p>
+      <p class="mt-2 text-caption" >{{ statusText }}</p>
     </v-col>
 
     <v-card elevation="3">
