@@ -1,8 +1,11 @@
 <template>
   <v-container class="d-flex flex-column ga-5">
-    <section class="">
-      <h1>Navigation</h1>
-      <p>This section allows you to manage the status and navigation of your robots.</p>
+    <section class="d-flex align-center justify-space-between mb-4">
+      <section>
+        <h1>Navigation</h1>
+        <p>This section allows you to manage the status and navigation of your robots.</p>        
+      </section>
+      <v-btn variant="flat" prepend-icon="mdi-refresh" size="x-large" @click="refresh">Refresh</v-btn>
     </section>
     <v-col>
       <section class="d-flex flex-column">
@@ -25,7 +28,6 @@
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-launch</v-icon><span class="ml-1">Launch Robots</span></p>
           <v-spacer></v-spacer>
-          <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
         </v-card-title>
         <v-table>
           <thead>
@@ -74,7 +76,6 @@
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot-mower</v-icon><span class="ml-1">Dock Robots</span></p>
           <v-spacer></v-spacer>
-          <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshRobots">Refresh</v-btn>
         </v-card-title>
         <v-table>
           <thead>
@@ -155,7 +156,6 @@
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-package-variant</v-icon><span class="ml-1">Spawn Box</span></p>
           <v-spacer></v-spacer>
-          <v-btn variant="flat" prepend-icon="mdi-refresh">Refresh</v-btn>
         </v-card-title>
         <v-table>
           <thead>
@@ -206,7 +206,11 @@ import Snackbar from '~/components/snackbar.vue'
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)
 
-  function refreshRobots() {
+  function refresh() {
+    dockStore.fetchDockConfigs()
+    if (selectedDockConfig.value) {
+      dockStore.fetchDocks(selectedDockConfig.value)
+    }
     dockStore.fetchOnlineRobots()
   }
 
