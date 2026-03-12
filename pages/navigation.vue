@@ -153,6 +153,18 @@
 
     <v-col>
       <v-card elevation="3">
+        <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
+        <v-card-text>
+          <div class="d-flex align-center justify-center" style="height: 600px; background-color: #f5f5f5; border: 1px solid #ddd;">
+            <!-- <span class="text-center" style="color: #888;">Map is shown here</span> -->
+            <span id="map"/>
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-col>
+
+    <v-col>
+      <v-card elevation="3">
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-package-variant</v-icon><span class="ml-1">Spawn Box</span></p>
           <v-spacer></v-spacer>
@@ -328,6 +340,7 @@ import Snackbar from '~/components/snackbar.vue'
       })
     })
   })
+
   onUnmounted(() => {
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
@@ -348,4 +361,71 @@ import Snackbar from '~/components/snackbar.vue'
       
     }
   })
+
+  let viewer:any = null
+  let rosMap:any = null
+
+  watch(toDockRobots, async (robots) => {
+    if (robots.length === 0) {
+      // console.log("No running robots detected.")
+      if (viewer) {
+        viewer.scene.clear()
+        viewer = null
+        const div = document.getElementById("map")
+        if (div) {
+          div.innerHTML = ""
+        }
+      }
+      if (rosMap) {
+        rosMap.close()
+        rosMap = null
+      }
+      return
+    }
+    await initMap()
+  })
+
+  async function initMap() {
+
+    if (viewer) return
+
+    const firstRobot: any = toDockRobots.value[0]
+    const ROS2D = (window as any).ROS2D
+    const ROSLIB = (window as any).ROSLIB
+    
+    if (!firstRobot || !firstRobot.ip) {
+      console.warn("No robots available to connect for map visualization.")
+      return
+    }
+
+    console.log(`Initializing map connection to ROS bridge on ${firstRobot.hostname} at ${firstRobot.ip}...`)
+
+    viewer = new ROS2D.Viewer({
+      divID: "map",
+      width: 500,
+      height: 500
+    })
+
+    rosMap = new ROSLIB.Ros({
+      url: `ws://${firstRobot.ip}:9090`
+    })
+
+    rosMap.on("connection", () => {
+
+      const gridClient = new ROS2D.OccupancyGridClient({
+        ros: rosMap,
+        rootObject: viewer.scene,
+        topic: "/map",
+        continuous: false
+      })
+
+      gridClient.on("change", () => {
+        const grid = gridClient.currentGrid
+        if (!grid) return
+
+        viewer.scaleToDimensions(grid.width, grid.height)
+        viewer.shift(grid.pose.position.x, grid.pose.position.y)
+      })
+    })
+  }
 </script>
