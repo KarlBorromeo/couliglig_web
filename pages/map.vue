@@ -79,6 +79,7 @@
       </v-card-text>
     </v-card>
     <Snackbar ref="snackbar" />
+    <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 
@@ -98,9 +99,11 @@ import Snackbar from '~/components/snackbar.vue'
   const activeRobots = computed(() => dockStore.toMappingRobots)
   let selectedRobot = ref(null)
   const rosConnections: any[] = []
+  const loading = ref(true)
 
   async function toggleRequestMapping(robotIp: string, command: string) {
     try{
+      loading.value = true
       const res = await fetch(`http://${robotIp}:8000/roslib/slam`, 
         {
           method: "POST",
@@ -115,11 +118,14 @@ import Snackbar from '~/components/snackbar.vue'
       }
     } catch (error) {
       snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
     }
   }
 
   async function saveMap() {
       try {
+          loading.value = true
           const response = await fetch(`http://${selectedRobot.value}:8000/slam/save-map`, {
               method: 'POST'
           });
@@ -141,15 +147,19 @@ import Snackbar from '~/components/snackbar.vue'
           a.remove();
           window.URL.revokeObjectURL(url);
 
+          loading.value = false
           snackbar?.value.showSnackbar("✅ Map saved and downloaded successfully.", "success");
 
       } catch (err) {
+          loading.value = false
           snackbar?.value.showSnackbar("❌ Failed to save map.", "error");
       }
   }
   
-  function refreshRobots() {
-    dockStore.fetchOnlineRobots()
+  async function refreshRobots() {
+    loading.value = true
+    await dockStore.fetchOnlineRobots()
+    loading.value = false
   }
 
   function isSelectedRobotMapping() {
@@ -178,9 +188,12 @@ import Snackbar from '~/components/snackbar.vue'
 
   onMounted(async () => {
     try{
+      loading.value = true
       // await Promise.reject(new Error("Simulated fetch error"))
       await dockStore.fetchOnlineRobots()
+      loading.value = false
     } catch (error) {
+      loading.value = false
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
     }

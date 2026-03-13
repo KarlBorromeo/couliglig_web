@@ -91,6 +91,7 @@
       <UploadModal class="flex-grow-1" @submit="handleSubmit"/>    
     </v-col>
     <Snackbar ref="snackbar" class="mt-4"/>
+    <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 
@@ -104,6 +105,7 @@
   let robotNames = ref<string[]>([...listRobotNames])
   const dockingTypes = ['pickup', 'receiver', 'waiting_zone']
   const snackbar = ref<any>(null)
+  const loading = ref(false)
 
   interface Dock {
     config_id: number | undefined
@@ -175,9 +177,12 @@
 
   async function handleSubmit(data: { name: string, description: string }) {
     try{
+      loading.value = true
       await dockStore.createConfig(data, docks.value, handleMapSubmit(), robotPoses.value);
+      loading.value = false
       snackbar.value?.showSnackbar("Configuration created successfully!", 'green');
     } catch (error:any) {
+      loading.value = false
       snackbar.value?.showSnackbar(error, 'red');
       return;
     }

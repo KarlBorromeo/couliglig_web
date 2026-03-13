@@ -153,7 +153,30 @@
 
     <v-col>
       <v-card elevation="3">
-        <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
+        <v-card-title>
+          <div>
+            <v-icon size="20">mdi-map-outline</v-icon>
+            Live Map Render
+          </div>
+
+          <!-- Robot Color Legend -->
+          <div class="d-flex align-center ga-4">
+            <div
+              v-for="(legend, key) in legendColor()"
+              :key="key"
+              class="d-flex align-center ga-2"
+            >
+              <div
+                class="robot-color"
+                :style="{
+                  backgroundColor: legend.color
+                }"
+              ></div>
+              <span class="robot-label">{{ legend.name }}</span>
+            </div>
+          </div>
+
+        </v-card-title>
         <v-card-text>
           <div class="d-flex align-center justify-center" style="height: 600px; background-color: #f5f5f5; border: 1px solid #ddd;">
             <!-- <span class="text-center" style="color: #888;">Map is shown here</span> -->
@@ -196,13 +219,11 @@
       </v-card>
     </v-col>
     <Snackbar ref="snackbar" />
+    <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 
 <script setup lang="ts">
-import Snackbar from '~/components/snackbar.vue'
-
-
   const dockStore = useDockStore()
   const selectedRobotsToLaunch = ref<string[]>([])
   const selectedRobotToDock = ref(null)
@@ -217,17 +238,21 @@ import Snackbar from '~/components/snackbar.vue'
   const docks = computed(() => dockStore.docks)
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)
+  const loading = ref(false)
 
-  function refresh() {
-    dockStore.fetchDockConfigs()
+  async function refresh() {
+    loading.value = true
+    await dockStore.fetchDockConfigs()
     if (selectedDockConfig.value) {
-      dockStore.fetchDocks(selectedDockConfig.value)
+      await dockStore.fetchDocks(selectedDockConfig.value)
     }
-    dockStore.fetchOnlineRobots()
+    await dockStore.fetchOnlineRobots()
+    loading.value = false
   }
 
   async function launchRobots() {
     try {
+      loading.value = true
       const robot_data = selectedRobotsToLaunch.value.map(ip => {
         const robot = toLaunchRobots.value.find(robot => robot.ip === ip)
         if (robot) {
@@ -241,8 +266,10 @@ import Snackbar from '~/components/snackbar.vue'
       })
       selectedRobotsToLaunch.value = []
       await dockStore.actionRunNavigation(selectedDockConfig.value!, robot_data)
+      loading.value = false
       snackbar?.value.showSnackbar("Navigation launched successfully", "success")
     } catch (error) {
+      loading.value = false
       snackbar?.value.showSnackbar(error, "error")
     }
 
@@ -250,6 +277,7 @@ import Snackbar from '~/components/snackbar.vue'
 
   async function dockRobot() {
     try {
+      loading.value = true
       if (!selectedRobotToDock.value || !selectedDockConfig.value || !selectedDockId.value) {
         throw new Error("Please select a robot, dock configuration, and dock to proceed with docking.")
       }
@@ -267,15 +295,18 @@ import Snackbar from '~/components/snackbar.vue'
       });
 
       const result = await response.json();
-      console.log(result)
+      // console.log(result)
+      loading.value = false
       snackbar?.value.showSnackbar(result.message, "success")
     } catch (error) {
+      loading.value = false
       snackbar?.value.showSnackbar(error, "error")
     }
   }
 
   async function stopRobot(robotIp: string){
     try {
+      loading.value = true
       const selectedStopRobot = toDockRobots.value.find(robot => robot.ip === robotIp)
       if (!selectedStopRobot) {
         throw new Error(`Selected robot with IP ${robotIp} not found in navigating robots.`)
@@ -292,23 +323,29 @@ import Snackbar from '~/components/snackbar.vue'
       });
       const res = await response.json()
       if (res.success) {
+        loading.value = false
         snackbar?.value.showSnackbar(res.message, "success")
       } else {
         throw new Error(res.message || "Failed to stop the robot.")
       }
     } catch (error) {
       snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
     }
   }
 
   onMounted(async () => {
     try{
       // await Promise.reject(new Error("Simulated fetch error"))
+      loading.value = true
       await dockStore.fetchDockConfigs()
       await dockStore.fetchOnlineRobots()
     } catch (error) {
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
     }
     const onlineRobots = dockStore.onlineRobots
     const ROSLIB = (window as any).ROSLIB
@@ -354,11 +391,13 @@ import Snackbar from '~/components/snackbar.vue'
     if (newConfigId) {
       try{
         // await Promise.reject(new Error("Simulated fetch error"))
+        loading.value = true
         await dockStore.fetchDocks(newConfigId)
       } catch (error) {
         snackbar?.value.showSnackbar(error, "error")
+      } finally {
+        loading.value = false
       }
-      
     }
   })
 
@@ -374,14 +413,6 @@ import Snackbar from '~/components/snackbar.vue'
   let odomBaseRot: Record<string, any> = {}
   let arrowColors: Record<string, number[]> = {}
 
-  // const colors = [
-  //   [255, 0, 0],    // red
-  //   [0, 150, 255],  // blue
-  //   [0, 200, 100],  // green
-  //   [255, 150, 0],  // orange
-  //   [200, 0, 255],  // purple
-  //   [255, 50, 120], // pink
-  // ]
   const colorDict: Record<string, number[]> = {
     couliglig_bot_1: [255, 0, 0],    // red
     couliglig_bot_2: [0, 150, 255],  // blue
@@ -527,7 +558,6 @@ import Snackbar from '~/components/snackbar.vue'
     })
   }
 
-
   function drawArrowToViewer(ROSLIB: any, ROS2D: any, createjs: any) {
 
     toDockRobots.value.forEach((robot:any, index:number) => {
@@ -613,4 +643,30 @@ import Snackbar from '~/components/snackbar.vue'
       })
     })
   }
+
+  function legendColor(){
+    const legend = toDockRobots.value.map((robot:any) => {
+      const color: number[] = colorDict[robot.namespace] || [Math.floor(Math.random() * 256), Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)]
+      return {
+        name: robot.namespace,
+        color: `rgb(${color[0]}, ${color[1]}, ${color[2]})`
+      }
+    })
+    return legend
+  }
 </script>
+
+<style scoped>
+  .robot-color {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.2);
+  }
+
+  .robot-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #555;
+  }
+</style>

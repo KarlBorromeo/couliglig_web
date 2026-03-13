@@ -40,6 +40,7 @@
       </v-table>
     </v-card>
     <Snackbar ref="snackbar" />
+    <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 <script setup lang="ts">
@@ -55,16 +56,22 @@ import Snackbar from '~/components/snackbar.vue'
   ]
   const activeRobots = computed(() => dockStore.onlineRobots)
   const rosConnections: any[] = []
+  const loading = ref(false)
 
-  function refreshRobots() {
-    dockStore.fetchOnlineRobots()
+  async function refreshRobots() {
+    loading.value = true
+    await dockStore.fetchOnlineRobots()
+    loading.value = false
   }
 
   onMounted(async () => {
     try{
+      loading.value = true
       // await Promise.reject(new Error("Simulated fetch error"))
       await dockStore.fetchOnlineRobots()
+      loading.value = false
     } catch (error) {
+      loading.value = false
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
     }
