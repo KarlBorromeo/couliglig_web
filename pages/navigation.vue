@@ -363,9 +363,32 @@ import Snackbar from '~/components/snackbar.vue'
   })
 
   let viewer:any = null
-  let rosMap:any = null
+  let rosMapConnection:any = null
+  let mapProviderIp: string | null = null
 
+  let rosMarkerConnections: any[] = []
+  let markerProviderIPs: string[] = []
+  let robotMarkers: Record<string, any> = {}
+  let mapOdom: Record<string, any> = {}
+  let odomBase: Record<string, any> = {}
+  let odomBaseRot: Record<string, any> = {}
+
+  const colors = [
+    [255, 0, 0],    // red
+    [0, 150, 255],  // blue
+    [0, 200, 100],  // green
+    [255, 150, 0],  // orange
+    [200, 0, 255],  // purple
+    [255, 50, 120], // pink
+  ]
+  
   watch(toDockRobots, async (robots) => {
+
+    const ROS2D = (window as any).ROS2D
+    const ROSLIB = (window as any).ROSLIB
+    const createjs = (window as any).createjs
+
+    // remove all connections and markers if no robots are running
     if (robots.length === 0) {
       // console.log("No running robots detected.")
       if (viewer) {
@@ -376,44 +399,100 @@ import Snackbar from '~/components/snackbar.vue'
           div.innerHTML = ""
         }
       }
-      if (rosMap) {
-        rosMap.close()
-        rosMap = null
+      if (rosMapConnection) {
+        rosMapConnection.close()
+        rosMapConnection = null
+      }
+      mapProviderIp = null
+      
+      rosMarkerConnections.forEach((ros) => ros.close())
+      rosMarkerConnections.length = 0
+      markerProviderIPs.length = 0
+      for (const ip in robotMarkers) {
+        delete robotMarkers[ip]
+      }
+      for (const ip in mapOdom) {
+        delete mapOdom[ip]
+      }
+      for (const ip in odomBase) {
+        delete odomBase[ip]
+      }
+      for (const ip in odomBaseRot) {
+        delete odomBaseRot[ip]
       }
       return
-    }
-    await initMap()
+    }  
+
+    // cleanup connections and markers for robots that are no longer running
+    const activeIpKeys = toDockRobots.value.map(robot => robot.ip)
+    const tempMarkerProviderIPs = [...markerProviderIPs]
+    tempMarkerProviderIPs.forEach((ip, ind) => {
+      if (!activeIpKeys.includes(ip)) {
+
+        markerProviderIPs.splice(ind, 1)
+
+        rosMarkerConnections[ind].close()
+        rosMarkerConnections.splice(ind, 1)
+
+        if (robotMarkers[ip]) {
+          viewer.scene.removeChild(robotMarkers[ip])
+          delete robotMarkers[ip]
+        }
+
+        delete mapOdom[ip]
+        delete odomBase[ip]
+        delete odomBaseRot[ip]
+      }
+    })
+    // console.log("Marker provider IPs before cleanup:", markerProviderIPs)
+    // console.log("ROS marker connections before cleanup:", rosMarkerConnections)
+    // console.log("Robot markers before cleanup:", robotMarkers)
+    // console.log("Map Odom", mapOdom)
+    // console.log("Odom Base", odomBase)
+    // console.log("Odom Base Rot", odomBaseRot)
+
+    // console.log("Running robots detected:", robots.map((r:any) => r.hostname).join(", "))
+    initMap(ROSLIB,ROS2D)
+    drawArrowToViewer(ROSLIB, ROS2D, createjs)
   })
 
-  async function initMap() {
-
-    if (viewer) return
+  function initMap(ROSLIB: any, ROS2D: any) {
 
     const firstRobot: any = toDockRobots.value[0]
-    const ROS2D = (window as any).ROS2D
-    const ROSLIB = (window as any).ROSLIB
-    
-    if (!firstRobot || !firstRobot.ip) {
-      console.warn("No robots available to connect for map visualization.")
+
+    // If already connected to this robot, do nothing
+    if (mapProviderIp === firstRobot.ip) {
       return
     }
 
-    console.log(`Initializing map connection to ROS bridge on ${firstRobot.hostname} at ${firstRobot.ip}...`)
+    // Close previous map connection
+    rosMapConnection?.close()
+    rosMapConnection = null
 
-    viewer = new ROS2D.Viewer({
-      divID: "map",
-      width: 500,
-      height: 500
+    // Update the map provider IP
+    mapProviderIp = firstRobot.ip
+
+    // Clear previous viewer if it exists
+    if (viewer) {
+      viewer.scene.removeAllChildren()
+    } else {
+      viewer = new ROS2D.Viewer({
+        divID: "map",
+        width: 500,
+        height: 500
+      })
+    }
+
+    rosMapConnection = new ROSLIB.Ros({
+      url: `ws://${mapProviderIp}:9090`
     })
 
-    rosMap = new ROSLIB.Ros({
-      url: `ws://${firstRobot.ip}:9090`
-    })
+    rosMapConnection.on("connection", () => {
 
-    rosMap.on("connection", () => {
+      console.log(`Connected to ROS bridge on ${firstRobot.hostname} at ${firstRobot.ip} for map visualization.`)
 
       const gridClient = new ROS2D.OccupancyGridClient({
-        ros: rosMap,
+        ros: rosMapConnection,
         rootObject: viewer.scene,
         topic: "/map",
         continuous: false
@@ -425,6 +504,97 @@ import Snackbar from '~/components/snackbar.vue'
 
         viewer.scaleToDimensions(grid.width, grid.height)
         viewer.shift(grid.pose.position.x, grid.pose.position.y)
+      })
+
+      // reattach existing markers to new viewer
+      Object.values(robotMarkers).forEach((marker:any) => {
+        viewer.scene.addChild(marker)
+      })
+    })
+  }
+
+
+
+  function drawArrowToViewer(ROSLIB: any, ROS2D: any, createjs: any) {
+
+    toDockRobots.value.forEach((robot:any, index:number) => {
+
+      if (markerProviderIPs.includes(robot.ip)) {
+        return
+      }
+
+      markerProviderIPs.push(robot.ip)
+
+      const ros = new ROSLIB.Ros({
+        url: `ws://${robot.ip}:9090`
+      })
+
+      rosMarkerConnections.push(ros)
+
+      ros.on("connection", () => {
+
+        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+
+        const color = colors[index % colors.length]
+
+        const robotMarker = new ROS2D.ArrowShape({
+          size: 0.6,
+          strokeSize: 0.05,
+          strokeColor: createjs.Graphics.getRGB(...color),
+          fillColor: createjs.Graphics.getRGB(...color)
+        })
+
+        robotMarkers[robot.ip] = robotMarker
+        viewer.scene.addChild(robotMarker)
+
+        const tfTopic = new ROSLIB.Topic({
+          ros: ros,
+          name: `/${robot.namespace}/tf`,
+          messageType: "tf2_msgs/msg/TFMessage"
+        })
+
+        tfTopic.subscribe((msg:any) => {
+
+          msg.transforms.forEach((t:any) => {
+
+            const parent = t.header.frame_id
+            const child = t.child_frame_id
+
+            // console.log(robot.hostname, parent, "→", child)
+
+            // map -> odom
+            if (child.endsWith("odom") && parent.endsWith("map")) {
+              mapOdom[robot.ip] = t.transform.translation
+            }
+
+            // odom -> base_footprint
+            if (child.endsWith("base_footprint") && parent.endsWith("odom")) {
+              odomBase[robot.ip] = t.transform.translation
+              odomBaseRot[robot.ip] = t.transform.rotation
+            }
+
+            // when both are available compute map -> base
+            if (mapOdom[robot.ip] && odomBase[robot.ip]) {
+
+              const marker = robotMarkers[robot.ip]
+
+              const x = mapOdom[robot.ip].x + odomBase[robot.ip].x
+              const y = mapOdom[robot.ip].y + odomBase[robot.ip].y
+
+              marker.x = x
+              marker.y = -y
+
+              const q = odomBaseRot[robot.ip]
+
+              const yaw = Math.atan2(
+                2 * (q.w*q.z + q.x*q.y),
+                1 - 2 * (q.y*q.y + q.z*q.z)
+              )
+
+              marker.rotation = -yaw * 180 / Math.PI
+            }
+          })
+        })
       })
     })
   }
