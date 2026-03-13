@@ -372,16 +372,25 @@ import Snackbar from '~/components/snackbar.vue'
   let mapOdom: Record<string, any> = {}
   let odomBase: Record<string, any> = {}
   let odomBaseRot: Record<string, any> = {}
+  let arrowColors: Record<string, number[]> = {}
 
-  const colors = [
-    [255, 0, 0],    // red
-    [0, 150, 255],  // blue
-    [0, 200, 100],  // green
-    [255, 150, 0],  // orange
-    [200, 0, 255],  // purple
-    [255, 50, 120], // pink
-  ]
-  
+  // const colors = [
+  //   [255, 0, 0],    // red
+  //   [0, 150, 255],  // blue
+  //   [0, 200, 100],  // green
+  //   [255, 150, 0],  // orange
+  //   [200, 0, 255],  // purple
+  //   [255, 50, 120], // pink
+  // ]
+  const colorDict: Record<string, number[]> = {
+    couliglig_bot_1: [255, 0, 0],    // red
+    couliglig_bot_2: [0, 150, 255],  // blue
+    couliglig_bot_3: [0, 200, 100],  // green
+    couliglig_bot_4: [255, 150, 0],  // orange
+    couliglig_bot_5: [200, 0, 255],  // purple
+    couliglig_bot_6: [255, 50, 120], // pink
+  }
+
   watch(toDockRobots, async (robots) => {
 
     const ROS2D = (window as any).ROS2D
@@ -403,11 +412,14 @@ import Snackbar from '~/components/snackbar.vue'
         rosMapConnection.close()
         rosMapConnection = null
       }
+
       mapProviderIp = null
-      
+
+      markerProviderIPs.length = 0
+
       rosMarkerConnections.forEach((ros) => ros.close())
       rosMarkerConnections.length = 0
-      markerProviderIPs.length = 0
+      
       for (const ip in robotMarkers) {
         delete robotMarkers[ip]
       }
@@ -442,11 +454,12 @@ import Snackbar from '~/components/snackbar.vue'
         delete mapOdom[ip]
         delete odomBase[ip]
         delete odomBaseRot[ip]
+        delete arrowColors[ip]
       }
     })
-    // console.log("Marker provider IPs before cleanup:", markerProviderIPs)
-    // console.log("ROS marker connections before cleanup:", rosMarkerConnections)
-    // console.log("Robot markers before cleanup:", robotMarkers)
+    // console.log("Marker provider IPs:", markerProviderIPs)
+    // console.log("ROS marker connections:", rosMarkerConnections)
+    // console.log("Robot markers:", robotMarkers)
     // console.log("Map Odom", mapOdom)
     // console.log("Odom Base", odomBase)
     // console.log("Odom Base Rot", odomBaseRot)
@@ -483,6 +496,7 @@ import Snackbar from '~/components/snackbar.vue'
       })
     }
 
+    // create new connection for the map provider robot
     rosMapConnection = new ROSLIB.Ros({
       url: `ws://${mapProviderIp}:9090`
     })
@@ -514,28 +528,30 @@ import Snackbar from '~/components/snackbar.vue'
   }
 
 
-
   function drawArrowToViewer(ROSLIB: any, ROS2D: any, createjs: any) {
 
     toDockRobots.value.forEach((robot:any, index:number) => {
 
+      // If already connected to this robot for markers, do nothing
       if (markerProviderIPs.includes(robot.ip)) {
         return
       }
 
+      // Update the marker provider IPs
       markerProviderIPs.push(robot.ip)
 
+      // create new connection for the marker provider robot
       const ros = new ROSLIB.Ros({
         url: `ws://${robot.ip}:9090`
       })
 
+      // Add to the list of ROS connections for markers
       rosMarkerConnections.push(ros)
 
       ros.on("connection", () => {
-
-        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
-
-        const color = colors[index % colors.length]
+        // console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+        // Create a unique color for each robot
+        const color: number[] = colorDict[robot.namespace] || [Math.floor(Math.random() * 256), Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)]
 
         const robotMarker = new ROS2D.ArrowShape({
           size: 0.6,
@@ -544,6 +560,7 @@ import Snackbar from '~/components/snackbar.vue'
           fillColor: createjs.Graphics.getRGB(...color)
         })
 
+        // Store the marker in the robotMarkers object using the robot's IP as the key
         robotMarkers[robot.ip] = robotMarker
         viewer.scene.addChild(robotMarker)
 
@@ -559,8 +576,6 @@ import Snackbar from '~/components/snackbar.vue'
 
             const parent = t.header.frame_id
             const child = t.child_frame_id
-
-            // console.log(robot.hostname, parent, "→", child)
 
             // map -> odom
             if (child.endsWith("odom") && parent.endsWith("map")) {
