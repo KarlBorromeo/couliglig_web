@@ -601,7 +601,6 @@
         })
 
         tfTopic.subscribe((msg:any) => {
-
           msg.transforms.forEach((t:any) => {
 
             const parent = t.header.frame_id
@@ -640,8 +639,79 @@
             }
           })
         })
+
+        const costmapCanvas = document.createElement("canvas")
+        const ctx = costmapCanvas.getContext("2d")
+
+        const costmapBitmap = new createjs.Bitmap(costmapCanvas)
+        viewer.scene.addChild(costmapBitmap)
+
+        if (!ctx) {
+          console.error("Failed to get canvas context for costmap visualization.")
+          return
+        }
+
+        const costmapTopic = new ROSLIB.Topic({
+          ros: ros,
+          name: `/${robot.namespace}/local_costmap/costmap`,
+          messageType: "nav_msgs/msg/OccupancyGrid"
+        })
+
+        costmapTopic.subscribe((msg:any)=>{
+
+          const width = msg.info.width
+          const height = msg.info.height
+          const data = msg.data
+
+          costmapCanvas.width = width
+          costmapCanvas.height = height
+
+          const img = ctx.createImageData(width,height)
+
+          for (let y = 0; y < height; y++) {
+
+            for (let x = 0; x < width; x++) {
+
+              const rosIndex = y * width + x
+              const canvasIndex = ((height - y - 1) * width + x) * 4
+
+              const cost = data[rosIndex]
+
+              const [r,g,b,a] = costToColor(cost)
+
+              img.data[canvasIndex] = r
+              img.data[canvasIndex + 1] = g
+              img.data[canvasIndex + 2] = b
+              img.data[canvasIndex + 3] = a
+            }
+          }
+
+          ctx.putImageData(img,0,0)
+
+          const origin = msg.info.origin.position
+          const resolution = msg.info.resolution
+
+          costmapBitmap.x = origin.x
+          costmapBitmap.y = -origin.y - height * resolution
+
+          costmapBitmap.scaleX = resolution
+          costmapBitmap.scaleY = resolution
+
+        })
       })
     })
+  }
+
+  function costToColor(cost: number): [number, number, number, number] {
+    if (cost === 0) return [0,0,0,0]
+
+    if (cost >= 100)
+      return [255,0,0,180]   // obstacle
+
+    if (cost > 0)
+      return [255,165,0,120] // inflation
+
+    return [0,0,0,0]
   }
 
   function legendColor(){
