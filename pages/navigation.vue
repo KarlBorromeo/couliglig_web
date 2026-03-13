@@ -691,8 +691,15 @@
           const origin = msg.info.origin.position
           const resolution = msg.info.resolution
 
-          costmapBitmap.x = origin.x
-          costmapBitmap.y = -origin.y - height * resolution
+          // wait until TF exists
+          if (!mapOdom[robot.ip]) return
+
+          // transform costmap origin from odom frame → map frame
+          const mapOriginX = mapOdom[robot.ip].x + origin.x
+          const mapOriginY = mapOdom[robot.ip].y + origin.y
+
+          costmapBitmap.x = mapOriginX
+          costmapBitmap.y = -mapOriginY - height * resolution
 
           costmapBitmap.scaleX = resolution
           costmapBitmap.scaleY = resolution
