@@ -145,18 +145,32 @@
                 persistent-hint
               />
             </v-col>
+            <v-col cols="12" sm="4" md="4" lg="3" xl="2">
+              <v-select
+                :items="dockType"
+                item-title="dock_id"
+                item-value="dock_id"
+                label="Select Dock Type"
+                variant="outlined"
+                v-model="selectedDockType"
+                hide-details
+                density="compact"
+                class="ml-4"
+                hint="Pick your favorite states"
+                persistent-hint
+              />
+            </v-col>
             <v-spacer />
           </v-row>
           </v-footer>
       </v-card>
     </v-col>
-
     <v-col>
       <v-card elevation="3">
         <v-card-title>
           <div>
             <v-icon size="20">mdi-map-outline</v-icon>
-            Live Map Render
+            Live Map and Camera Render
           </div>
 
           <!-- Robot Color Legend -->
@@ -178,9 +192,9 @@
 
         </v-card-title>
         <v-card-text>
-          <div class="d-flex align-center justify-center" style="height: 600px; background-color: #f5f5f5; border: 1px solid #ddd;">
-            <!-- <span class="text-center" style="color: #888;">Map is shown here</span> -->
+          <div class="d-flex align-center justify-center flex-wrap ga-5" style="min-height: 600px; background-color: #f5f5f5; border: 1px solid #ddd;">
             <span id="map"/>
+            <span id="camera" />
           </div>
         </v-card-text>
       </v-card>
@@ -229,9 +243,11 @@
   const selectedRobotToDock = ref(null)
   const selectedDockConfig = ref<number | null>(null)
   const selectedDockId = ref(null)
+  const selectedDockType = ref(null)
   const toLaunchRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const toDockRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select', 'Stop']
   const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
+  const dockType = ['Pickup', 'Dropoff', 'Transfer']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
   const toDockRobots = computed(() => dockStore.toDockRobots)
@@ -324,6 +340,8 @@
       const res = await response.json()
       if (res.success) {
         loading.value = false
+
+        removeCostmapCamera()
         snackbar?.value.showSnackbar(res.message, "success")
       } else {
         throw new Error(res.message || "Failed to stop the robot.")
@@ -412,6 +430,10 @@
   let odomBase: Record<string, any> = {}
   let odomBaseRot: Record<string, any> = {}
   let arrowColors: Record<string, number[]> = {}
+
+  let costmapConnection: any  = null
+  let localCostmaps: any = null
+  let globalCostmaps: any = null
 
   const colorDict: Record<string, number[]> = {
     couliglig_bot_1: [255, 0, 0],    // red
@@ -600,6 +622,7 @@
           messageType: "tf2_msgs/msg/TFMessage"
         })
 
+        // Subscribe to TF messages to get the robot's position and orientation
         tfTopic.subscribe((msg:any) => {
           msg.transforms.forEach((t:any) => {
 
@@ -639,84 +662,212 @@
             }
           })
         })
-
-        const costmapCanvas = document.createElement("canvas")
-        const ctx = costmapCanvas.getContext("2d")
-
-        const costmapBitmap = new createjs.Bitmap(costmapCanvas)
-        viewer.scene.addChild(costmapBitmap)
-
-        if (!ctx) {
-          console.error("Failed to get canvas context for costmap visualization.")
-          return
-        }
-
-        const costmapTopic = new ROSLIB.Topic({
-          ros: ros,
-          name: `/${robot.namespace}/local_costmap/costmap`,
-          messageType: "nav_msgs/msg/OccupancyGrid"
-        })
-
-        costmapTopic.subscribe((msg:any)=>{
-
-          const width = msg.info.width
-          const height = msg.info.height
-          const data = msg.data
-
-          costmapCanvas.width = width
-          costmapCanvas.height = height
-
-          const img = ctx.createImageData(width,height)
-
-          for (let y = 0; y < height; y++) {
-
-            for (let x = 0; x < width; x++) {
-
-              const rosIndex = y * width + x
-              const canvasIndex = ((height - y - 1) * width + x) * 4
-
-              const cost = data[rosIndex]
-
-              const [r,g,b,a] = costToColor(cost)
-
-              img.data[canvasIndex] = r
-              img.data[canvasIndex + 1] = g
-              img.data[canvasIndex + 2] = b
-              img.data[canvasIndex + 3] = a
-            }
-          }
-
-          ctx.putImageData(img,0,0)
-
-          const origin = msg.info.origin.position
-          const resolution = msg.info.resolution
-
-          // wait until TF exists
-          if (!mapOdom[robot.ip]) return
-
-          // transform costmap origin from odom frame → map frame
-          const mapOriginX = mapOdom[robot.ip].x + origin.x
-          const mapOriginY = mapOdom[robot.ip].y + origin.y
-
-          costmapBitmap.x = mapOriginX
-          costmapBitmap.y = -mapOriginY - height * resolution
-
-          costmapBitmap.scaleX = resolution
-          costmapBitmap.scaleY = resolution
-
-        })
       })
     })
   }
 
-  function costToColor(cost: number): [number, number, number, number] {
-    if (cost === 0) return [0,0,0,0]
+  watch(selectedRobotToDock, (newIp) => {
+
+    const ROS2D = (window as any).ROS2D
+    const ROSLIB = (window as any).ROSLIB
+    const createjs = (window as any).createjs
+
+    console.log("Selected robot to dock:", newIp)
+
+    if (!newIp) {
+      return
+    }
+
+    removeCostmapCamera()
+
+    const ros  = new ROSLIB.Ros({
+      url: `ws://${newIp}:9090`
+    })
+    costmapConnection = ros
+
+    const robot_namespace = toDockRobots.value.find(robot => robot.ip === newIp)?.namespace
+    if (!robot_namespace) {
+      console.error(`Could not find robot with IP ${newIp} in toDockRobots`)
+      return
+    }
+
+    const camera = document.getElementById("camera")
+    if (!camera) {
+      console.error("Camera div not found")
+      return
+    }
+    if (camera) {
+      camera.innerHTML = `<iframe
+        src="http://192.168.20.244:8889/${robot_namespace}"
+        width="400"
+        height="400"
+        autoplay
+        muted
+        playsinline
+      ></iframe>`
+    }
+
+    const localCostmapCanvas = document.createElement("canvas")
+    const localCtx = localCostmapCanvas.getContext("2d")
+    const localCostmapBitmap = new createjs.Bitmap(localCostmapCanvas)
+    localCostmaps = localCostmapBitmap
+    viewer.scene.addChild(localCostmapBitmap)
+
+    const globalCostmapCanvas = document.createElement("canvas")
+    const globalCtx = globalCostmapCanvas.getContext("2d")
+    const globalCostmapBitmap = new createjs.Bitmap(globalCostmapCanvas)
+    globalCostmaps = globalCostmapBitmap
+    viewer.scene.addChild(globalCostmapBitmap)
+
+
+    if (!localCtx) {
+      console.error("Failed to get canvas context for costmap visualization.")
+      return
+    }
+
+    const localCostmapTopic = new ROSLIB.Topic({
+      ros: ros,
+      name: `/${robot_namespace}/local_costmap/costmap`,
+      messageType: "nav_msgs/msg/OccupancyGrid"
+    })
+
+    if (!globalCtx) {
+      console.error("Failed to get canvas context for costmap visualization.")
+      return
+    }
+
+    const globalCostmapTopic = new ROSLIB.Topic({
+      ros: ros,
+      name: `/${robot_namespace}/global_costmap/costmap`,
+      messageType: "nav_msgs/msg/OccupancyGrid"
+    })
+    
+    ros.on("connection", () => {
+      console.log(`Connected to ROS bridge on ${robot_namespace} at ${newIp} for costmap visualization.`)
+      localCostmapTopic.subscribe((msg:any)=>{
+
+        const width = msg.info.width
+        const height = msg.info.height
+        const data = msg.data
+
+        localCostmapCanvas.width = width
+        localCostmapCanvas.height = height
+
+        const img = localCtx.createImageData(width,height)
+
+        for (let y = 0; y < height; y++) {
+
+          for (let x = 0; x < width; x++) {
+
+            const rosIndex = y * width + x
+            const canvasIndex = ((height - y - 1) * width + x) * 4
+
+            const cost = data[rosIndex]
+
+            const [r,g,b,a] = costLocalToColor(cost)
+
+            img.data[canvasIndex] = r
+            img.data[canvasIndex + 1] = g
+            img.data[canvasIndex + 2] = b
+            img.data[canvasIndex + 3] = a
+          }
+        }
+
+        localCtx.putImageData(img,0,0)
+
+        const origin = msg.info.origin.position
+        const resolution = msg.info.resolution
+
+        // wait until TF exists
+        if (!mapOdom[newIp]) return
+
+        // transform costmap origin from odom frame → map frame
+        const mapOriginX = mapOdom[newIp].x + origin.x
+        const mapOriginY = mapOdom[newIp].y + origin.y
+
+        localCostmaps.x = mapOriginX
+        localCostmaps.y = -mapOriginY - height * resolution
+
+        localCostmaps.scaleX = resolution
+        localCostmaps.scaleY = resolution
+      })
+      globalCostmapTopic.subscribe((msg:any)=>{
+
+        const width = msg.info.width
+        const height = msg.info.height
+        const data = msg.data
+
+        globalCostmapCanvas.width = width
+        globalCostmapCanvas.height = height
+
+        const img = globalCtx.createImageData(width,height)
+
+        for (let y = 0; y < height; y++) {
+
+          for (let x = 0; x < width; x++) {
+
+            const rosIndex = y * width + x
+            const canvasIndex = ((height - y - 1) * width + x) * 4
+
+            const cost = data[rosIndex]
+
+            const [r,g,b,a] = costGlobalToColor(cost)
+
+            img.data[canvasIndex] = r
+            img.data[canvasIndex + 1] = g
+            img.data[canvasIndex + 2] = b
+            img.data[canvasIndex + 3] = a
+          }
+        }
+
+        globalCtx.putImageData(img,0,0)
+
+        const origin = msg.info.origin.position
+        const resolution = msg.info.resolution
+
+        // wait until TF exists
+        if (!mapOdom[newIp]) return
+
+        // transform costmap origin from odom frame → map frame
+        const mapOriginX = mapOdom[newIp].x + origin.x
+        const mapOriginY = mapOdom[newIp].y + origin.y
+
+        globalCostmaps.x = mapOriginX
+        globalCostmaps.y = -mapOriginY - height * resolution
+
+        globalCostmaps.scaleX = resolution
+        globalCostmaps.scaleY = resolution
+      })
+      
+    })
+  })
+
+  function costLocalToColor(cost: number): [number, number, number, number] {
+
+    if (cost === 0)
+      return [0,0,0,0]
 
     if (cost >= 100)
-      return [255,0,0,180]   // obstacle
+      return [255,0,0,255] // obstacle
 
     if (cost > 0)
-      return [255,165,0,120] // inflation
+      return [0,220,255,160] // inflation
+
+    return [0,0,0,0]
+  }
+
+  function costGlobalToColor(cost: number): [number, number, number, number] {
+
+    if (cost === 0)
+      return [0,0,0,0]
+
+    if (cost >= 100)
+      return [0,255,255,100] // obstacle
+
+    if (cost > 0) {
+      const alpha = Math.min(120, cost * 0.5)
+      return [100,200,255,alpha] // soft blue inflation
+  }
 
     return [0,0,0,0]
   }
@@ -730,6 +881,25 @@
       }
     })
     return legend
+  }
+
+  function removeCostmapCamera() {
+    const camera = document.getElementById("camera")
+    if (camera) {
+      camera.innerHTML = ""
+    }
+    if (costmapConnection) {
+      costmapConnection.close()
+      costmapConnection = null
+    }
+    if (localCostmaps) {
+      viewer.scene.removeChild(localCostmaps)
+      localCostmaps = null
+    }
+    if (globalCostmaps) {
+      viewer.scene.removeChild(globalCostmaps)
+      globalCostmaps = null
+    }
   }
 </script>
 

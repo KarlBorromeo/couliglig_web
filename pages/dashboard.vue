@@ -1,5 +1,5 @@
 <template>
-  <v-container>
+  <v-container class="d-flex flex-column ga-5">
     <v-card elevation="3">
       <v-card-title class="d-flex align-center">
         <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-robot</v-icon><span class="ml-1">Online Robots</span></p>
@@ -39,12 +39,31 @@
         </tbody>
       </v-table>
     </v-card>
+    <v-card>
+      <v-card-title>
+        <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-video</v-icon><span class="ml-1">Live
+          Camera Feed</span></p>
+      </v-card-title>
+        <v-card-text id="camera" class="d-flex align-center justify-start flex-wrap ga-2" style="background-color:#f5f5f5; border: 1px solid #ddd;">
+          <div v-for="robot in runnningRobots" :key="robot.ip" class="d-flex flex-column align-center ga-1">
+            <div style="font-weight: bold;">Camera - {{ robot.hostname }}</div>
+            <iframe
+              :src="`http://192.168.20.244:8889/${robot.namespace}`"
+              width="320"
+              height="240"
+              frameborder="0"
+              allowfullscreen
+            ></iframe>
+          </div>
+          <p v-if="runnningRobots.length === 0" class="text-center w-100" style="color: #888;">No active camera feeds. Start a robot to view its camera feed here.</p>
+        </v-card-text>
+        
+    </v-card>
     <Snackbar ref="snackbar" />
     <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 <script setup lang="ts">
-import Snackbar from '~/components/snackbar.vue'
   const snackbar = ref<any>(null)
   const dockStore = useDockStore()
   const activeRobotHeader = [
@@ -55,6 +74,7 @@ import Snackbar from '~/components/snackbar.vue'
     'Battery (%)',
   ]
   const activeRobots = computed(() => dockStore.onlineRobots)
+  const runnningRobots = computed(() => dockStore.toDockRobots)
   const rosConnections: any[] = []
   const loading = ref(false)
 
