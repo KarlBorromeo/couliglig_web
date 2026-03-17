@@ -357,6 +357,15 @@
     try{
       // await Promise.reject(new Error("Simulated fetch error"))
       loading.value = true
+      const selectedConfigResponse = await fetch(`/api/selected-config`, 
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        }
+      })
+      const selectedConfigData = await selectedConfigResponse.json()
+      selectedDockConfig.value = selectedConfigData.configID? selectedConfigData.configID : null
       await dockStore.fetchDockConfigs()
       await dockStore.fetchOnlineRobots()
     } catch (error) {
@@ -408,6 +417,13 @@
     selectedRobotsToLaunch.value = []
     if (newConfigId) {
       try{
+        const response = await fetch(`/api/selected-config`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ configID: newConfigId })
+        })
         // await Promise.reject(new Error("Simulated fetch error"))
         loading.value = true
         await dockStore.fetchDocks(newConfigId)
@@ -416,6 +432,14 @@
       } finally {
         loading.value = false
       }
+    }else {
+      await fetch('/api/selected-config', {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ configID: null })
+      })
     }
   })
 
