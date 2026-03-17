@@ -35,6 +35,11 @@
               </v-icon>
               {{ item.battery }}%
             </td>
+            <td>
+              <v-btn variant="flat" size="x-small" @click="routeController(item.ip)">
+                <v-icon size="20">mdi-controller-classic</v-icon>
+              </v-btn>
+            </td>
           </tr>
         </tbody>
       </v-table>
@@ -72,6 +77,7 @@
     'IP Address',
     'Status',
     'Battery (%)',
+    'Controller'
   ]
   const activeRobots = computed(() => dockStore.onlineRobots)
   const runnningRobots = computed(() => dockStore.toDockRobots)
@@ -129,4 +135,8 @@
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
   })
+
+  function routeController(ip: string) {
+    window.open(`http://${ip}:8000/jc`, '_blank')
+  }
 </script>
