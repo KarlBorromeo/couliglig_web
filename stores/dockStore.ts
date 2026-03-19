@@ -112,11 +112,12 @@ export const useDockStore = defineStore("dock", {
             console.error("Error deleting dock configuration:", error);
         }
     },
-    async fetchDocks(configID: number) {
+    async fetchDocks() {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
-            const response = await axios.get(`${baseurl}dock`, { params: { config_id: configID } });
+            const response = await axios.get(`${baseurl}dock/all_dock_states`);
             this.docks = response.data;
+            this.docks.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
         } catch (error) {
             console.error("Error fetching docks:", error);
         }
@@ -150,6 +151,27 @@ export const useDockStore = defineStore("dock", {
             console.error("Error stopping navigation:", error);
             throw new Error(`Error stopping navigation`);
         }
+    },
+    async activateDockConfig(configId: number) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}dock/activate`, null, { params: { config_id: configId } });
+            console.log(`Dock configuration with ID ${configId} activated successfully.`);
+        } catch (error) {
+            console.error("Error activating dock configuration:", error);
+            throw new Error(`Error activating dock configuration`);
+        }
+    },
+    async dockClear() {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}dock/clear`);
+            this.docks = [];
+            console.log("All docks cleared successfully.");
+        } catch (error) {
+            console.error("Error clearing docks:", error);
+            throw new Error(`Error clearing docks`);
+        }
     }
   },
 });
@@ -177,6 +199,7 @@ interface dockConfigs {
     id: number;
     name: string;
     description: string;
+    is_active: boolean;
 }
 interface onlineRobot {
     ip: string;
@@ -188,14 +211,12 @@ interface onlineRobot {
     timestamp: number;
 }
 interface Docks {
-    id: number;
-    config_id: number;
-    dock_id: string;
     dock_type: string;
-    x: number;
-    y: number;
-    theta: number;
-    aruco_id: number;
+    dock_id: string;
+    status: string;
+    robot_id: string | null;
+    item_id: string | null;
+    weight: number; // Simulated weight for demonstration
 }
 interface robotData {
     namespace: string;

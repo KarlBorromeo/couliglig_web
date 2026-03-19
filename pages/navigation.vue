@@ -17,9 +17,11 @@
           v-model="selectedDockConfig"
           variant="outlined"
           hide-details
-          clearable
+          :disabled="!activateButton"
         ></v-select>
         <p class="text-caption">Description: {{ selectedDockConfig ? dockConfigs.find(config => config.id === selectedDockConfig)?.description : '' }}</p>
+        <v-btn color="primary" v-if="activateButton" @click="activateConfig">Activate</v-btn>
+        <v-btn color="secondary" v-else @click="deactivateConfig">Deactivate</v-btn>
       </section>
     </v-col>
 
@@ -205,6 +207,7 @@
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-package-variant</v-icon><span class="ml-1">Spawn Box</span></p>
           <v-spacer></v-spacer>
+          <v-btn variant="flat" prepend-icon="mdi-refresh" @click="refreshDocks">Refresh</v-btn>
         </v-card-title>
         <v-table>
           <thead>
@@ -215,14 +218,25 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="dock in docks" :key="dock.id">
+            <tr v-for="dock in docks" :key="dock.dock_id">
               <td>{{ dock.dock_id}}</td>
-              <td>{{ dock.x }}</td>
-              <td>{{ dock.y }}</td>
-              <td>{{ dock.theta }}</td>
-              <td>{{ dock.aruco_id }}</td>
+              <td>{{ dock.dock_type }}</td>
+              <td>{{ dock.status }}</td>
+              <td>{{ dock.robot_id }}</td>
               <td>
                 <v-switch inset hide-details color="primary"></v-switch>
+              </td>
+              <td>
+                <v-text-field
+                  type="number"
+                  variant="underlined"
+                  hide-details
+                  density="compact"
+                  width="50px"
+                  min="0"
+                  max="10"
+                  class="text-center"
+                />
               </td>
             </tr>
           </tbody>
@@ -246,7 +260,7 @@
   const selectedDockType = ref(null)
   const toLaunchRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const toDockRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select', 'Stop']
-  const dockHeaders = ['Dock ID', 'Pose X', 'Pose Y', 'Theta', 'Aruco ID', 'Spawn Box']
+  const dockHeaders = ['Dock ID', 'Dock Type', 'Status', 'Robot Assigned', 'Action', 'Weight']
   const dockType = ['Pickup', 'Dropoff', 'Transfer']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
@@ -259,9 +273,6 @@
   async function refresh() {
     loading.value = true
     await dockStore.fetchDockConfigs()
-    if (selectedDockConfig.value) {
-      await dockStore.fetchDocks(selectedDockConfig.value)
-    }
     await dockStore.fetchOnlineRobots()
     loading.value = false
   }
@@ -353,21 +364,63 @@
     }
   }
 
+  async function activateConfig(){
+    const activeConfig = dockStore.dockConfigs.find(config => config.id === selectedDockConfig.value)
+    if (!activeConfig) {
+      snackbar?.value.showSnackbar("Selected dock configuration not found. Please select a valid configuration to activate.", "error")
+      return
+    }
+    if (!selectedDockConfig.value){
+      snackbar?.value.showSnackbar("Please select a dock configuration to activate.", "error")
+      return
+    }
+    try {
+      loading.value = true
+      await dockStore.activateDockConfig(selectedDockConfig.value)
+      await dockStore.fetchDockConfigs()
+      const activeConfig = dockStore.dockConfigs.find(config => config.is_active)
+      if (activeConfig) {
+        selectedDockConfig.value = activeConfig.id
+        activateButton.value = false
+      }else {
+        console.warn("No active dock configuration found. Please select a configuration to proceed.")
+        activateButton.value = true
+      }
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function deactivateConfig(){
+    loading.value = true
+    const activatedConfig = dockStore.dockConfigs.find(config => config.id === selectedDockConfig.value && config.is_active)
+    if (!activatedConfig) {
+      snackbar?.value.showSnackbar("Selected dock configuration not found or not active. Please select a valid configuration to deactivate.", "error")
+      return
+    }
+    await dockStore.dockClear()
+    selectedDockConfig.value = null
+    await dockStore.fetchDockConfigs()
+    activateButton.value = true
+    loading.value = false
+  }
+
+  const activateButton = ref(false)
   onMounted(async () => {
     try{
-      // await Promise.reject(new Error("Simulated fetch error"))
       loading.value = true
-      const selectedConfigResponse = await fetch(`/api/selected-config`, 
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        }
-      })
-      const selectedConfigData = await selectedConfigResponse.json()
-      selectedDockConfig.value = selectedConfigData.configID? selectedConfigData.configID : null
       await dockStore.fetchDockConfigs()
       await dockStore.fetchOnlineRobots()
+      const activeConfig = dockStore.dockConfigs.find(config => config.is_active)
+      if (activeConfig) {
+        selectedDockConfig.value = activeConfig.id
+        activateButton.value = false
+      }else {
+        console.warn("No active dock configuration found. Please select a configuration to proceed.")
+        activateButton.value = true
+      }
     } catch (error) {
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
@@ -426,7 +479,7 @@
         })
         // await Promise.reject(new Error("Simulated fetch error"))
         loading.value = true
-        await dockStore.fetchDocks(newConfigId)
+        await dockStore.fetchDocks()
       } catch (error) {
         snackbar?.value.showSnackbar(error, "error")
       } finally {
@@ -442,6 +495,18 @@
       })
     }
   })
+
+  async function refreshDocks() {
+      try {
+        loading.value = true
+        await dockStore.fetchDocks()
+        snackbar?.value.showSnackbar("Dock states refreshed successfully", "success")
+      } catch (error) {
+        snackbar?.value.showSnackbar(error, "error")
+      } finally {
+        loading.value = false
+      }
+  }
 
   let viewer:any = null
   let rosMapConnection:any = null
