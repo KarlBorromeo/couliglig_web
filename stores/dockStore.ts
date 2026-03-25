@@ -14,9 +14,8 @@ export const useDockStore = defineStore("dock", {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
         let configId: number | undefined = undefined;
         let mapId: number | undefined = undefined;
+        const baseurl = useRuntimeConfig().public.baseURL;
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
-
             const createConfigRes = await axios.post(`${baseurl}dock`, configPayload);
             const config = createConfigRes.data
             configId = config.id;
@@ -52,7 +51,12 @@ export const useDockStore = defineStore("dock", {
             console.log("Map files uploaded successfully");
    
         } catch (error:any) {
-            throw new Error(`Error creating configuration`);  
+            const errorDetail = error.response.data.detail;
+            if (errorDetail == 'YAML filename already exists') {
+                // delete the created config to prevent orphaned configs without maps
+                await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+            }
+            throw new Error(error.response.data.detail || "Error creating dock configuration");  
         }
     },
     async fetchDockConfigs() {
