@@ -224,10 +224,25 @@
               <td>{{ dock.status }}</td>
               <td>{{ dock.robot_id }}</td>
               <td>
-                <v-switch inset hide-details color="primary"></v-switch>
+                <p v-if="dock.item_id">{{ dock.item_id }}</p>
+                <v-text-field
+                  v-else
+                  v-model="getDockItem(dock.dock_id).item_id"
+                  type="text"
+                  variant="underlined"
+                  hide-details
+                  density="compact"
+                  width="50px"
+                  min="0"
+                  max="10"
+                  class="text-center"
+                />
               </td>
               <td>
+                <p v-if="dock.item_id">{{ dock.item_weight }}</p>
                 <v-text-field
+                  v-else
+                  v-model="getDockItem(dock.dock_id).item_weight"
                   type="number"
                   variant="underlined"
                   hide-details
@@ -238,11 +253,25 @@
                   class="text-center"
                 />
               </td>
+              <td>
+                <p v-if="dock.item_id ">{{ dock.receiver_dock_id }}</p>
+                <v-select
+                  v-else
+                  v-model="getDockItem(dock.dock_id).receiver_dock_id"
+                  :items="docks_receivers"
+                  item-title="dock_id"
+                  item-value="dock_id"
+                  label="Select Dock Type"
+                  hide-details
+                  density="compact"
+                  variant="underlined"/>
+              </td>
+              <td>
+                <v-btn v-if="!dock.item_id"  density="comfortable" rounded="xl" size="small" color="success" block icon="mdi-plus" @click="addDockItem(dock.dock_id)" />
+                <v-btn v-else density="comfortable" rounded="xl" size="small" color="error" block icon="mdi-minus" @click="deleteDockItem(dock.dock_id)"/>
+              </td>
             </tr>
           </tbody>
-          <v-footer class="d-flex align-center">
-            <v-btn variant="flat" prepend-icon="mdi-chart-timeline-variant-shimmer" color="primary">Update Dock States</v-btn>
-          </v-footer>
         </v-table>
       </v-card>
     </v-col>
@@ -260,12 +289,13 @@
   const selectedDockType = ref(null)
   const toLaunchRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const toDockRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select', 'Stop']
-  const dockHeaders = ['Dock ID', 'Dock Type', 'Status', 'Robot Assigned', 'Action', 'Weight']
+  const dockHeaders = ['Dock ID', 'Dock Type', 'Status', 'Robot Assigned', 'Item ID', 'Weight', 'Receiver Dock', 'Actions']
   const dockType = ['Pickup', 'Dropoff', 'Transfer']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
   const toDockRobots = computed(() => dockStore.toDockRobots)
-  const docks = computed(() => dockStore.docks)
+  const docks = computed(() => dockStore.docks_pickups)
+  const docks_receivers = computed(() => dockStore.docks_receivers)
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)
   const loading = ref(false)
@@ -458,12 +488,22 @@
     })
   })
 
+  const { startRefresh, stopRefresh } = usePolling(()=> {
+    return new Promise<void>(async (resolve) => {
+      await refreshDocks()
+      console.log('AHAHAHAAHAH')
+      resolve()
+    })
+  }, 1000)
+
   onUnmounted(() => {
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
+    stopRefresh()
   })
 
   watch (selectedDockConfig, async (newConfigId) => {
+    stopRefresh()
     console.log("Selected dock config ID:", newConfigId)
     selectedDockId.value = null
     selectedRobotToDock.value = null
@@ -480,6 +520,7 @@
         // await Promise.reject(new Error("Simulated fetch error"))
         loading.value = true
         await dockStore.fetchDocks()
+        startRefresh()
       } catch (error) {
         snackbar?.value.showSnackbar(error, "error")
       } finally {
@@ -498,14 +539,61 @@
 
   async function refreshDocks() {
       try {
-        loading.value = true
+        // loading.value = true
         await dockStore.fetchDocks()
-        snackbar?.value.showSnackbar("Dock states refreshed successfully", "success")
+        // snackbar?.value.showSnackbar("Dock states refreshed successfully", "success")
       } catch (error) {
         snackbar?.value.showSnackbar(error, "error")
       } finally {
-        loading.value = false
+        // loading.value = false
       }
+  }
+
+  type DockItem = {
+    dock_id: string
+    receiver_dock_id: string
+    item_id: string
+    item_weight: number
+  }
+  const addedDockItem: Record<string, DockItem> = {}
+  function getDockItem(dockId: string): DockItem {
+    if (!addedDockItem[dockId]) {
+      addedDockItem[dockId] = {
+        dock_id: dockId,
+        receiver_dock_id: '',
+        item_id: '',
+        item_weight: 0
+      }
+    }
+    return addedDockItem[dockId]
+  }
+
+  async function addDockItem(dockId: string) {
+    try {
+      loading.value = true
+      const receiverDockId = getDockItem(dockId).receiver_dock_id
+      const itemId = getDockItem(dockId).item_id
+      const weight = getDockItem(dockId).item_weight
+      await dockStore.addDockItem(dockId, receiverDockId, itemId, weight)
+      snackbar?.value.showSnackbar("Item added to dock successfully", "success")
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function deleteDockItem(dockId: string) {
+    try {
+      loading.value = true
+      await dockStore.deleteDockItem(dockId)
+      delete addedDockItem[dockId]
+      snackbar?.value.showSnackbar("Item removed from dock successfully", "success")
+    } catch (error) {
+      snackbar?.value.showSnackbar(error, "error")
+    } finally {
+      loading.value = false
+    }
   }
 
   let viewer:any = null
@@ -990,6 +1078,30 @@
       globalCostmaps = null
     }
   }
+
+  function usePolling(fn: () => Promise<void>, delay = 5000) {
+    let stopped = false
+
+    const run = async () => {
+        if (stopped) return
+
+        await fn()
+
+        setTimeout(run, delay)
+    }
+
+    const startRefresh = () => {
+        stopped = false
+        run()
+    }
+
+    const stopRefresh = () => {
+        stopped = true
+    }
+
+    return { startRefresh, stopRefresh }
+  }
+
 </script>
 
 <style scoped>

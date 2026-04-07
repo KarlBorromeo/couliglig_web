@@ -8,7 +8,8 @@ export const useDockStore = defineStore("dock", {
     toMappingRobots : [] as onlineRobot[],
     toLaunchRobots : [] as onlineRobot[],
     toDockRobots : [] as onlineRobot[],
-    docks: [] as Docks[],
+    docks_pickups: [] as Docks[],
+    docks_receivers: [] as Docks[],
   }),
   actions: {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
@@ -120,8 +121,11 @@ export const useDockStore = defineStore("dock", {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             const response = await axios.get(`${baseurl}dock/all_dock_states`);
-            this.docks = response.data;
-            this.docks.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
+            let docks = response.data;
+            this.docks_pickups = docks.filter((dock: Docks) => dock.dock_type === 'pickup');
+            this.docks_receivers = docks.filter((dock: Docks) => dock.dock_type === 'receiver');
+            this.docks_pickups.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
+            this.docks_receivers.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
         } catch (error) {
             console.error("Error fetching docks:", error);
         }
@@ -170,11 +174,41 @@ export const useDockStore = defineStore("dock", {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             await axios.post(`${baseurl}dock/clear`);
-            this.docks = [];
+            this.docks_pickups = [];
+            this.docks_receivers = [];
             console.log("All docks cleared successfully.");
         } catch (error) {
             console.error("Error clearing docks:", error);
             throw new Error(`Error clearing docks`);
+        }
+    },
+    async deleteDockItem(dock_id: string) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}dock/remove-item`, {
+                dock_id
+            });
+            console.log(`Dock item with ID ${dock_id} deleted successfully.`);
+            await this.fetchDocks(); // Refresh dock states after deletion
+        } catch (error) {
+            console.error("Error deleting dock item:", error);
+            throw new Error(`Error deleting dock item`);
+        }
+    },
+    async addDockItem(dock_id: string, receiver_dock_id: string, item_id: string, item_weight: number) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}dock/add-item`, {
+                dock_id,
+                receiver_dock_id,
+                item_id,
+                item_weight
+            });
+            console.log(`Item added to dock with ID ${dock_id} successfully.`);
+            await this.fetchDocks(); // Refresh dock states after addition
+        }catch (error) {
+            console.error("Error adding item to dock:", error);
+            throw new Error(`Error adding item to dock`);
         }
     }
   },
@@ -218,9 +252,10 @@ interface Docks {
     dock_type: string;
     dock_id: string;
     status: string;
-    robot_id: string | null;
-    item_id: string | null;
-    weight: number; // Simulated weight for demonstration
+    robot_id: string;
+    item_id: string;
+    item_weight: number; // Simulated weight for demonstration
+    receiver_dock_id: string; // For pickup docks, this will be null. For receiver docks, this will indicate which pickup dock is assigned to it.
 }
 interface robotData {
     namespace: string;
