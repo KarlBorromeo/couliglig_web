@@ -147,21 +147,6 @@
                 persistent-hint
               />
             </v-col>
-            <v-col cols="12" sm="4" md="4" lg="3" xl="2">
-              <v-select
-                :items="dockType"
-                item-title="dock_id"
-                item-value="dock_id"
-                label="Select Dock Type"
-                variant="outlined"
-                v-model="selectedDockType"
-                hide-details
-                density="compact"
-                class="ml-4"
-                hint="Pick your favorite states"
-                persistent-hint
-              />
-            </v-col>
             <v-spacer />
           </v-row>
           </v-footer>
@@ -218,7 +203,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="dock in docks" :key="dock.dock_id">
+            <tr v-for="dock in dock_pickups" :key="dock.dock_id">
               <td>{{ dock.dock_id}}</td>
               <td>{{ dock.dock_type }}</td>
               <td>{{ dock.status }}</td>
@@ -286,15 +271,14 @@
   const selectedRobotToDock = ref(null)
   const selectedDockConfig = ref<number | null>(null)
   const selectedDockId = ref(null)
-  const selectedDockType = ref(null)
   const toLaunchRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select']
   const toDockRobotHeaders = ['Robot Name', 'Namespace', 'IP Address', 'ROS ID', 'Battery','Status', 'Select', 'Stop']
   const dockHeaders = ['Dock ID', 'Dock Type', 'Status', 'Robot Assigned', 'Item ID', 'Weight', 'Receiver Dock', 'Actions']
-  const dockType = ['Pickup', 'Dropoff', 'Transfer']
   const dockConfigs = computed(() => dockStore.dockConfigs)
   const toLaunchRobots = computed(() => dockStore.toLaunchRobots)
   const toDockRobots = computed(() => dockStore.toDockRobots)
-  const docks = computed(() => dockStore.docks_pickups)
+  const docks = computed(() => dockStore.docks)
+  const dock_pickups = computed(() => dockStore.docks_pickups)
   const docks_receivers = computed(() => dockStore.docks_receivers)
   const rosConnections: any[] = []
   const snackbar = ref<any>(null)

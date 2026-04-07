@@ -8,6 +8,7 @@ export const useDockStore = defineStore("dock", {
     toMappingRobots : [] as onlineRobot[],
     toLaunchRobots : [] as onlineRobot[],
     toDockRobots : [] as onlineRobot[],
+    docks: [] as Docks[],
     docks_pickups: [] as Docks[],
     docks_receivers: [] as Docks[],
   }),
@@ -122,6 +123,7 @@ export const useDockStore = defineStore("dock", {
             const baseurl = useRuntimeConfig().public.baseURL;
             const response = await axios.get(`${baseurl}dock/all_dock_states`);
             let docks = response.data;
+            this.docks = docks;
             this.docks_pickups = docks.filter((dock: Docks) => dock.dock_type === 'pickup');
             this.docks_receivers = docks.filter((dock: Docks) => dock.dock_type === 'receiver');
             this.docks_pickups.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
@@ -174,6 +176,7 @@ export const useDockStore = defineStore("dock", {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             await axios.post(`${baseurl}dock/clear`);
+            this.docks = [];
             this.docks_pickups = [];
             this.docks_receivers = [];
             console.log("All docks cleared successfully.");
