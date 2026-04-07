@@ -475,7 +475,6 @@
   const { startRefresh, stopRefresh } = usePolling(()=> {
     return new Promise<void>(async (resolve) => {
       await refreshDocks()
-      console.log('AHAHAHAAHAH')
       resolve()
     })
   }, 1000)
@@ -487,6 +486,7 @@
   })
 
   watch (selectedDockConfig, async (newConfigId) => {
+    await dockStore.fetchDocksAll(newConfigId)
     stopRefresh()
     console.log("Selected dock config ID:", newConfigId)
     selectedDockId.value = null
@@ -503,7 +503,6 @@
         })
         // await Promise.reject(new Error("Simulated fetch error"))
         loading.value = true
-        await dockStore.fetchDocks()
         startRefresh()
       } catch (error) {
         snackbar?.value.showSnackbar(error, "error")

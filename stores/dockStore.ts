@@ -9,8 +9,8 @@ export const useDockStore = defineStore("dock", {
     toLaunchRobots : [] as onlineRobot[],
     toDockRobots : [] as onlineRobot[],
     docks: [] as Docks[],
-    docks_pickups: [] as Docks[],
-    docks_receivers: [] as Docks[],
+    docks_pickups: [] as DockStates[],
+    docks_receivers: [] as DockStates[],
   }),
   actions: {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
@@ -118,12 +118,26 @@ export const useDockStore = defineStore("dock", {
             console.error("Error deleting dock configuration:", error);
         }
     },
+    async fetchDocksAll(configId: number | null) {
+        if (configId === null) {
+            console.warn("No dock configuration selected, skipping fetchDocksAll");
+            this.docks = [];
+            return;
+        }
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}dock`, { params: { config_id: configId } });
+            this.docks = response.data.filter((dock: Docks) => dock.dock_id.startsWith('dock')); // Filter to include only docks, exclude items starts with couliglig
+            console.log("Fetched all docks:", this.docks);
+        } catch (error) {
+            console.error("Error fetching all docks:", error);
+        }
+    },
     async fetchDocks() {
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             const response = await axios.get(`${baseurl}dock/all_dock_states`);
             let docks = response.data;
-            this.docks = docks;
             this.docks_pickups = docks.filter((dock: Docks) => dock.dock_type === 'pickup');
             this.docks_receivers = docks.filter((dock: Docks) => dock.dock_type === 'receiver');
             this.docks_pickups.sort((a, b) => a.dock_id.localeCompare(b.dock_id));
@@ -251,7 +265,7 @@ interface onlineRobot {
     status: string; 
     timestamp: number;
 }
-interface Docks {
+interface DockStates {
     dock_type: string;
     dock_id: string;
     status: string;
@@ -259,6 +273,16 @@ interface Docks {
     item_id: string;
     item_weight: number; // Simulated weight for demonstration
     receiver_dock_id: string; // For pickup docks, this will be null. For receiver docks, this will indicate which pickup dock is assigned to it.
+}
+interface Docks {
+    id: number;
+    config_id: number;
+    dock_id: string;
+    dock_type: string;
+    x: number;
+    y: number;
+    theta: number;
+    aruco_id: number;
 }
 interface robotData {
     namespace: string;
