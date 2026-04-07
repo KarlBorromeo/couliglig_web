@@ -20,7 +20,7 @@
           :disabled="!activateButton"
         ></v-select>
         <p class="text-caption">Description: {{ selectedDockConfig ? dockConfigs.find(config => config.id === selectedDockConfig)?.description : '' }}</p>
-        <v-btn color="primary" v-if="activateButton" @click="activateConfig">Activate</v-btn>
+        <v-btn color="primary" v-if="activateButton" @click="activateConfig" :disabled="!selectedDockConfig">Activate</v-btn>
         <v-btn color="secondary" v-else @click="deactivateConfig">Deactivate</v-btn>
       </section>
     </v-col>

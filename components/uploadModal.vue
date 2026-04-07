@@ -48,8 +48,8 @@
     const name = ref("");
     const description = ref("");
     function submit(isActive: Ref<boolean>) {
-        if (!name.value || !description.value) {
-            alert("Please enter a combination name and description");
+        if (!name.value) {
+            alert("Please enter a combination name");
             return;
         }
         emit('submit', { name: name.value, description: description.value });
