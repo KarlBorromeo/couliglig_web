@@ -56,8 +56,11 @@
                   ></v-select>
               </td>
               <td>
-                <v-btn icon flat @click="deleteDock(dock.id)">
+                <v-btn v-if="dock.id" icon flat @click="deleteDock(dock.id)">
                   <v-icon class="text-black">mdi-trash-can</v-icon>
+                </v-btn>
+                <v-btn v-else icon flat @click="docks.splice(i, 1)">
+                   <v-icon class="text-black">mdi-close</v-icon>
                 </v-btn>
               </td>
             </tr>
@@ -109,8 +112,11 @@
               <td><v-text-field density="compact" variant="underlined" hide-details v-model="robot.initial_y"></v-text-field></td>
               <td><v-text-field density="compact" variant="underlined" hide-details v-model="robot.initial_theta"></v-text-field></td>
               <td>
-                <v-btn icon flat @click="deleteRobotInitialPose(robot.id)">
+                <v-btn v-if="robot.id" icon flat @click="deleteRobotInitialPose(robot.id)">
                   <v-icon class="text-black">mdi-trash-can</v-icon>
+                </v-btn>
+                <v-btn v-else icon flat @click="robotPoses.splice(i, 1)">
+                   <v-icon class="text-black">mdi-close</v-icon>
                 </v-btn>
               </td>
             </tr>
@@ -229,6 +235,31 @@
     map_id: number
   }
 
+  function getNextDockId() {
+    let maxDockNumber = 0;
+    let useUnderscoreFormat = false;
+
+    docks.value.forEach((dock) => {
+      const match = dock.dock_id.trim().match(/^dock(_?)(\d+)$/i);
+      if (!match) {
+        return;
+      }
+
+      const dockNumber = Number.parseInt(match[2], 10);
+      if (Number.isNaN(dockNumber)) {
+        return;
+      }
+
+      maxDockNumber = Math.max(maxDockNumber, dockNumber);
+      if (match[1] === '_') {
+        useUnderscoreFormat = true;
+      }
+    });
+
+    const nextDockNumber = maxDockNumber + 1;
+    return useUnderscoreFormat ? `dock_${nextDockNumber}` : `dock${nextDockNumber}`;
+  }
+
   function addDock() {
     if (selectedDockConfig.value === null) {
       snackbar.value?.showSnackbar('Please select a dock configuration before adding docks', 'orange');
@@ -237,7 +268,7 @@
     docks.value.push({
       id: undefined,
       config_id: selectedDockConfig.value,
-      dock_id: `dock_${docks.value.length}`,
+      dock_id: getNextDockId(),
       dock_type: 'pickup',
       x: 0,
       y: 0,
@@ -300,6 +331,10 @@
       }
 
       if (isChangeMap.value) {
+        if (!mapYamlFile.value && !mapImageFile.value) {
+          snackbar.value?.showSnackbar('No new map files selected to update', 'orange');
+          return;
+        }
         await dockStore.updateMap(handleMapSubmit())
         const map_res = await dockStore.getMap(selectedDockConfig.value)
         if (!map_res) {
@@ -342,7 +377,10 @@
     try {
       loading.value = true;
       await dockStore.deleteDock(dock_id)
-      docks.value = await dockStore.fetchDocksAll(selectedDockConfig.value!)
+      const index = docks.value.findIndex(dock => dock.id === dock_id)
+      if (index !== -1) {
+        docks.value.splice(index, 1)
+      }
       snackbar.value?.showSnackbar('Dock deleted successfully', 'green');
     } catch (error:any) {
       snackbar.value?.showSnackbar(error, 'red');
@@ -364,7 +402,10 @@
     try {
       loading.value = true;
       await dockStore.deleteRobotInitialPose(pose_id)
-      robotPoses.value = await dockStore.getRobotInitialPoses(mapId.value!)
+      const index = robotPoses.value.findIndex(pose => pose.id === pose_id)
+      if (index !== -1) {
+        robotPoses.value.splice(index, 1)
+      }
       snackbar.value?.showSnackbar('Robot initial pose deleted successfully', 'green');
     } catch (error:any) {
       snackbar.value?.showSnackbar(error, 'red');
