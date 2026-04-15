@@ -1,7 +1,7 @@
 <template>
   <v-container class="d-flex flex-column ga-5">
     <section class="">
-      <h1>Config Manager</h1>
+      <h1>Create Config</h1>
       <p>This section allows you to create the configuration settings and files for the robots.</p>
     </section>
     <v-col>

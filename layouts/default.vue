@@ -36,6 +36,7 @@
                 <v-list-item prepend-icon="mdi-database" title="Database" value="database" to="/database"></v-list-item>
             </v-list-group>
             <v-list-item prepend-icon="mdi-robot" title="Create Config" value="create-config" to="/create-config"></v-list-item>
+            <v-list-item prepend-icon="mdi-file-edit" title="Edit Config" value="edit-config" to="/edit-config"></v-list-item>
             <v-list-item prepend-icon="mdi-navigation" title="Navigation" value="navigation" to="/navigation"></v-list-item>
             </v-list>
         </v-navigation-drawer>

@@ -53,11 +53,19 @@ export const useDockStore = defineStore("dock", {
             console.log("Map files uploaded successfully");
    
         } catch (error:any) {
-            const errorDetail = error.response.data.detail;
-            if (errorDetail == 'YAML filename already exists') {
-                // delete the created config to prevent orphaned configs without maps
-                await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+            if (configId !== undefined) {
+                try {
+                    await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+                    console.log(`Dock configuration with ID ${configId} deleted successfully after error.`);
+                } catch (deleteError) {
+                    console.error(`Error deleting dock configuration with ID ${configId} after failure:`, deleteError);
+                }
             }
+            // const errorDetail = error.response.data.detail;
+            // if (errorDetail == 'YAML filename already exists') {
+            //     // delete the created config to prevent orphaned configs without maps
+            //     await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+            // }
             throw new Error(error.response.data.detail || "Error creating dock configuration");  
         }
     },
@@ -85,6 +93,55 @@ export const useDockStore = defineStore("dock", {
         } catch (error) {
             console.error("Error fetching online robots:", error);
             return [];
+        }
+    },
+    async getMap(config_id: number | null) {
+        try{
+            if (config_id === null) {
+                console.warn("No dock configuration selected, skipping getMap");
+                return null;
+            }
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}map`, { params: { config_id } });
+            const index = response.data.findIndex((map: { dock_config_id: number }) => map.dock_config_id === config_id);
+            if (index !== -1) {
+                return response.data[index];
+            } else {
+                console.warn("No map found for config_id:", config_id);
+                return null;
+            }
+        }catch(error){
+            console.error("Error fetching map:", error);
+            return null;
+        }
+    },
+    async getRobotInitialPoses(map_id: number | null) {
+        try {
+            if (map_id === null) {
+                console.warn("No map selected, skipping getRobotInitialPoses");
+                return [];
+            }
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const response = await axios.get(`${baseurl}robots/infos`, { params: { map_id } });
+            return response.data
+        }catch (error) {
+            console.error("Error fetching robot initial poses:", error);
+            return [];
+        }
+    },
+    async deleteConfig(configId: number) {
+        try{
+            if (!configId) {
+                console.warn("No dock configuration selected, skipping deleteConfig");
+                return;
+            }
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
+            this.dockConfigs = this.dockConfigs.filter(config => config.id !== configId);
+            console.log(`Dock configuration with ID ${configId} deleted successfully.`);
+        }catch(error){
+            console.error("Error deleting dock configuration:", error);
+            throw new Error(`Error deleting dock configuration`);
         }
     },
     fetchToMappingRobots() {
@@ -122,15 +179,20 @@ export const useDockStore = defineStore("dock", {
         if (configId === null) {
             console.warn("No dock configuration selected, skipping fetchDocksAll");
             this.docks = [];
-            return;
+            return [];
         }
         try {
             const baseurl = useRuntimeConfig().public.baseURL;
             const response = await axios.get(`${baseurl}dock`, { params: { config_id: configId } });
-            this.docks = response.data.filter((dock: Docks) => dock.dock_id.startsWith('dock')); // Filter to include only docks, exclude items starts with couliglig
+            const data = [...response.data].sort((a, b) =>
+                a.dock_id.localeCompare(b.dock_id, undefined, { numeric: true })
+            )
+            this.docks = data;
             console.log("Fetched all docks:", this.docks);
+            return data;
         } catch (error) {
             console.error("Error fetching all docks:", error);
+            return [];
         }
     },
     async fetchDocks() {
@@ -223,12 +285,91 @@ export const useDockStore = defineStore("dock", {
             });
             console.log(`Item added to dock with ID ${dock_id} successfully.`);
             await this.fetchDocks(); // Refresh dock states after addition
-        }catch (error) {
-            console.error("Error adding item to dock:", error);
+        }catch (error: any) {
+            console.error("Error adding item to dock:", error.response?.data?.detail || error);
+            if (error.response?.data?.detail) {
+                throw new Error(error.response.data.detail);
+            }
             throw new Error(`Error adding item to dock`);
         }
-    }
-  },
+    },
+    async updateDocks(docks : updateDocks[]) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}dock/upsert_dock`, docks);
+            console.log("Docks updated successfully.");
+        } catch (error: any) {
+            console.error("Error updating docks:", error.response?.data?.detail || error);
+            if(error.response?.data?.detail) {
+                throw new Error(error.response.data.detail);
+            }   
+            throw new Error(`Error updating docks`);
+        }
+    },
+    async updateRobotInitialPoses(initialPoses: robotUpdatePose[]) {
+        try {
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.post(`${baseurl}robots/infos/upsert`, initialPoses);
+            console.log("Map updated with new robot poses successfully.");
+        }catch (error: any) {
+            console.error("Error updating map with new robot poses:", error.response?.data?.detail || error);
+            if (error.response?.data?.detail) {
+                throw new Error(error.response.data.detail);
+            }
+            throw new Error(`Error updating map with new robot poses`);
+        }
+    },
+    async updateMap(formDataMap: FormData) {
+        try{
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.put(`${baseurl}map/update`, formDataMap, {
+                headers: {
+                    "Content-Type": "multipart/form-data"
+                }
+            });
+            console.log("Map updated successfully.");
+        }catch(error: any){
+            console.error("Error updating map:", error.response?.data?.detail || error);
+            if (error.response?.data?.detail) {
+                throw new Error(error.response.data.detail);
+            }
+            throw new Error(`Error updating map`);
+        }
+    },
+    async deleteDock(dock_id: number) {
+        try{
+            const ids = [dock_id];
+            const baseurl = useRuntimeConfig().public.baseURL;
+            const res = await axios.delete(`${baseurl}dock/delete_dock`, {
+                data: {
+                    ids: ids
+                }
+            });
+            console.log(`Dock with ID ${dock_id} deleted successfully.`);
+        }catch(error: any){
+            console.error("Error deleting dock:", error.response?.data?.detail || error);
+            if(error.response?.data?.detail) {
+                throw new Error(error.response.data.detail);
+            }
+            throw new Error(`Error deleting dock`);
+        }
+    },
+    async deleteRobotInitialPose(pose_id: number) {
+        try {
+            const ids = [pose_id];
+            const baseurl = useRuntimeConfig().public.baseURL;
+            await axios.delete(`${baseurl}robots/infos/bulk`, {
+                data: {
+                    ids: ids
+                }
+            });
+            console.log(`Robot initial pose with ID ${pose_id} deleted successfully.`);
+        } catch (error) {
+            console.error("Error deleting robot initial pose:", error);
+            throw new Error(`Error deleting robot initial pose`);
+        }
+    },
+  }
 });
 
 interface createDockConfig {
@@ -249,6 +390,14 @@ interface robotPose {
     initial_x: number
     initial_y: number
     initial_theta: number
+}
+
+interface robotUpdatePose {
+    robot_name: string
+    initial_x: number
+    initial_y: number
+    initial_theta: number
+    map_id: number
 }
 interface dockConfigs {
     id: number;
@@ -276,6 +425,16 @@ interface DockStates {
 }
 interface Docks {
     id: number;
+    config_id: number;
+    dock_id: string;
+    dock_type: string;
+    x: number;
+    y: number;
+    theta: number;
+    aruco_id: number;
+}
+
+interface updateDocks {
     config_id: number;
     dock_id: string;
     dock_type: string;
