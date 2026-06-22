@@ -28,7 +28,7 @@ export const useDockStore = defineStore("dock", {
     async createConfig(configPayload: createDockConfig, docksPayload: createDock[]| [], formDataMap: FormData, robotPoses: robotPose[] | []) {
         let configId: number | undefined = undefined;
         let mapId: number | undefined = undefined;
-        const baseurl = useRuntimeConfig().public.baseURL;
+        const baseurl = useBaseURL();
         try {
             const createConfigRes = await axios.post(`${baseurl}dock`, configPayload);
             const config = createConfigRes.data
@@ -83,7 +83,7 @@ export const useDockStore = defineStore("dock", {
     },
     async fetchDockConfigs() {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}dock/configs`);
             this.dockConfigs = response.data;
             console.log("Fetched dock configurations:", this.dockConfigs);
@@ -93,7 +93,7 @@ export const useDockStore = defineStore("dock", {
     },
     async fetchOnlineRobots() {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}robots/online`);
             const robots = response.data.data;
             console.log("Fetched online robots:", robots);
@@ -113,7 +113,7 @@ export const useDockStore = defineStore("dock", {
                 console.warn("No dock configuration selected, skipping getMap");
                 return null;
             }
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}map`, { params: { config_id } });
             const index = response.data.findIndex((map: { dock_config_id: number }) => map.dock_config_id === config_id);
             if (index !== -1) {
@@ -133,7 +133,7 @@ export const useDockStore = defineStore("dock", {
                 console.warn("No map selected, skipping getRobotInitialPoses");
                 return [];
             }
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}robots/infos`, { params: { map_id } });
             return response.data
         }catch (error) {
@@ -147,7 +147,7 @@ export const useDockStore = defineStore("dock", {
                 console.warn("No dock configuration selected, skipping deleteConfig");
                 return;
             }
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
             this.dockConfigs = this.dockConfigs.filter(config => config.id !== configId);
             console.log(`Dock configuration with ID ${configId} deleted successfully.`);
@@ -179,7 +179,7 @@ export const useDockStore = defineStore("dock", {
     },
     async deleteDockConfig(configId: number) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.delete(`${baseurl}dock/delete_config`, { params: { config_id: configId } });
             this.dockConfigs = this.dockConfigs.filter(config => config.id !== configId);
             console.log(`Dock configuration with ID ${configId} deleted successfully.`);
@@ -194,7 +194,7 @@ export const useDockStore = defineStore("dock", {
             return [];
         }
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}dock`, { params: { config_id: configId } });
             const data = [...response.data].sort((a, b) =>
                 a.dock_id.localeCompare(b.dock_id, undefined, { numeric: true })
@@ -209,7 +209,7 @@ export const useDockStore = defineStore("dock", {
     },
     async fetchDocks() {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const response = await axios.get(`${baseurl}dock/all_dock_states`);
             let docks = response.data;
             this.docks_pickups = docks.filter((dock: Docks) => dock.dock_type === 'pickup');
@@ -224,7 +224,7 @@ export const useDockStore = defineStore("dock", {
         try {
             // await Promise.reject(new Error("Simulated navigation launch error"))
             console.log("Launching navigation with config_id:", config_id, "and robot_data:", robot_data);
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}actions/run_nav`, 
                 { 
                     config_id, 
@@ -239,7 +239,7 @@ export const useDockStore = defineStore("dock", {
     async actionStopNavigation(config_id: number | null, robot_data : robotData[]) {
         try {
             console.log("Stopping navigation with config_id:", config_id, "and robot_data:", robot_data);
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const res = await axios.post(`${baseurl}actions/stop_nav`, { config_id, robot_data });
             return {
                 successful: res.data.successful,
@@ -252,7 +252,7 @@ export const useDockStore = defineStore("dock", {
     },
     async activateDockConfig(configId: number) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}dock/activate`, null, { params: { config_id: configId } });
             console.log(`Dock configuration with ID ${configId} activated successfully.`);
         } catch (error) {
@@ -262,7 +262,7 @@ export const useDockStore = defineStore("dock", {
     },
     async dockClear() {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}dock/clear`);
             this.docks = [];
             this.docks_pickups = [];
@@ -275,7 +275,7 @@ export const useDockStore = defineStore("dock", {
     },
     async deleteDockItem(dock_id: string) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}dock/remove-item`, {
                 dock_id
             });
@@ -288,7 +288,7 @@ export const useDockStore = defineStore("dock", {
     },
     async addDockItem(dock_id: string, receiver_dock_id: string, item_id: string, item_weight: number) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}dock/add-item`, {
                 dock_id,
                 receiver_dock_id,
@@ -307,7 +307,7 @@ export const useDockStore = defineStore("dock", {
     },
     async updateDocks(docks : updateDocks[]) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}dock/upsert_dock`, docks);
             console.log("Docks updated successfully.");
         } catch (error: any) {
@@ -320,7 +320,7 @@ export const useDockStore = defineStore("dock", {
     },
     async updateRobotInitialPoses(initialPoses: robotUpdatePose[]) {
         try {
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.post(`${baseurl}robots/infos/upsert`, initialPoses);
             console.log("Map updated with new robot poses successfully.");
         }catch (error: any) {
@@ -333,7 +333,7 @@ export const useDockStore = defineStore("dock", {
     },
     async updateMap(formDataMap: FormData) {
         try{
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.put(`${baseurl}map/update`, formDataMap, {
                 headers: {
                     "Content-Type": "multipart/form-data"
@@ -351,7 +351,7 @@ export const useDockStore = defineStore("dock", {
     async deleteDock(dock_id: number) {
         try{
             const ids = [dock_id];
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             const res = await axios.delete(`${baseurl}dock/delete_dock`, {
                 data: {
                     ids: ids
@@ -369,7 +369,7 @@ export const useDockStore = defineStore("dock", {
     async deleteRobotInitialPose(pose_id: number) {
         try {
             const ids = [pose_id];
-            const baseurl = useRuntimeConfig().public.baseURL;
+            const baseurl = useBaseURL();
             await axios.delete(`${baseurl}robots/infos/bulk`, {
                 data: {
                     ids: ids
