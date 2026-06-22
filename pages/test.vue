@@ -21,7 +21,7 @@
         const wsProtocol =
             window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 
-        wsConnection = await dockStore.fetchOnlineRobots()
+        wsConnection = await dockStore.fetchOnlineRobotsWS()
         watch(
             wsConnection.robots,
             (robots) => {

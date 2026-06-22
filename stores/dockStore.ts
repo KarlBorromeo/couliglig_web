@@ -5,6 +5,7 @@ export const useBaseURL = () => {
   if (typeof window === 'undefined') {
     return 'http://localhost:8000/'
   }
+//   return 'http://192.168.20.128:8000/'
   return `${window.location.protocol}//${window.location.hostname}:8000/`
 }
 
@@ -91,12 +92,27 @@ export const useDockStore = defineStore("dock", {
             console.error("Error fetching dock configurations:", error);
         }
     },
-    async fetchOnlineRobots() {
+    // async fetchOnlineRobots() {
+    //     try {
+    //         const baseurl = useBaseURL();
+    //         const response = await axios.get(`${baseurl}robots/online`);
+    //         const robots = response.data.data;
+    //         console.log("Fetched online robots:", robots);
+    //         this.onlineRobots = robots.map((robot: onlineRobot) => ({
+    //             ...robot,
+    //             battery: Math.floor(Math.random() * 100) + 1, // Simulate battery level
+    //             status: "" // Default status, can be updated based on real data
+    //         }));
+    //     } catch (error) {
+    //         console.error("Error fetching online robots:", error);
+    //         return [];
+    //     }
+    // },
+    async fetchOnlineRobotsWS() {
         const store = this;
         const robots = ref<onlineRobot[]>([]);
         const connected = ref(false);
         const baseurl = useBaseURL();
-        // const baseurl = 'http://192.168.20.128:8000/';
         let ws: WebSocket | null = null;
         let reconnectDelay = 1000;
         const maxDelay = 30_000;

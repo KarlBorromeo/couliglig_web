@@ -81,12 +81,12 @@
   ]
   const activeRobots = computed(() => dockStore.onlineRobots)
   const runnningRobots = computed(() => dockStore.toDockRobots)
-  const rosConnections: any[] = []
+  const rosConnections = new Map<string, any>()
   const loading = ref(false)
 
   async function refreshRobots() {
     loading.value = true
-    await dockStore.fetchOnlineRobots()
+    await dockStore.fetchOnlineRobotsWS()
     loading.value = false
   }
 
@@ -94,43 +94,71 @@
     try{
       loading.value = true
       // await Promise.reject(new Error("Simulated fetch error"))
-      await dockStore.fetchOnlineRobots()
+      await dockStore.fetchOnlineRobotsWS()
       loading.value = false
     } catch (error) {
       loading.value = false
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
     }
-
-    const ROSLIB = (window as any).ROSLIB
-    activeRobots.value.forEach(robot => {
-      const ros = new ROSLIB.Ros({
-        url: `ws://${robot.ip}:9090`
-      })
-      rosConnections.push(ros)
-      ros.on('connection', () => {
-        console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
-      })
-      ros.on('error', (error: any) => {
-        console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
-      })
-      ros.on('close', () => {
-        console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
-      })
-
-      const statusListener = new ROSLIB.Topic({
-        ros: ros,
-        name: `/${robot.namespace}/robot_state`,
-        messageType: "custom_msgs/CouligligStatus"
-      })
-
-      statusListener.subscribe((msg: any) => {
-        // console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
-        const state = msg.state
-        dockStore.updateRobotStatus(robot.ip, state)
-      })
-    })
   })
+  watch(() => dockStore.onlineRobots,
+    (robots) => {
+      console.log("Received robots update in dashboard:", robots)
+      const ROSLIB = (window as any).ROSLIB
+
+        // Current online robot IPs
+      const activeIps = new Set(robots.map(robot => robot.ip))
+
+      // Disconnect robots that are no longer online
+      for (const [ip, ros] of rosConnections.entries()) {
+        if (!activeIps.has(ip)) {
+          console.log(`Robot ${ip} is offline. Closing ROS connection...`)
+          try {
+            ros.close()
+          } catch (err) {
+            console.error(err)
+          }
+          rosConnections.delete(ip)
+        }
+      }
+
+      robots.forEach(robot => {
+        if (rosConnections.has(robot.ip)) {
+          console.log(
+            `Already connected to ROS bridge on ${robot.hostname} at ${robot.ip}`
+          )
+          return
+        }
+        const ros = new ROSLIB.Ros({
+          url: `ws://${robot.ip}:9090`
+        })
+        rosConnections.set(robot.ip, ros)
+        ros.on('connection', () => {
+          console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
+        })
+        ros.on('error', (error: any) => {
+          console.error(`Error connecting to ROS bridge on ${robot.hostname} at ${robot.ip}:`, error)
+        })
+        ros.on('close', () => {
+          console.log(`Connection to ROS bridge on ${robot.hostname} at ${robot.ip} closed`)
+        })
+
+        const statusListener = new ROSLIB.Topic({
+          ros: ros,
+          name: `/${robot.namespace}/robot_state`,
+          messageType: "custom_msgs/CouligligStatus"
+        })
+
+        statusListener.subscribe((msg: any) => {
+          // console.log(`Status update from ${robot.hostname} at ${robot.ip}:`, msg)
+          const state = msg.state
+          dockStore.updateRobotStatus(robot.ip, state)
+        })
+      })
+    },
+    { deep: true }
+  )
   onUnmounted(() => {
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
