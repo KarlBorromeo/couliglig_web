@@ -20,7 +20,7 @@ export const useDockStore = defineStore("dock", {
     docks_receivers: [] as DockStates[],
   }),
   actions: {
-        async test() {
+    async test() {
         console.log("This is a test function in the dock store.");
         const baseurl = useBaseURL();
         console.log("Base URL for API calls:", baseurl);
@@ -92,20 +92,64 @@ export const useDockStore = defineStore("dock", {
         }
     },
     async fetchOnlineRobots() {
-        try {
-            const baseurl = useBaseURL();
-            const response = await axios.get(`${baseurl}robots/online`);
-            const robots = response.data.data;
-            console.log("Fetched online robots:", robots);
-            this.onlineRobots = robots.map((robot: onlineRobot) => ({
-                ...robot,
-                battery: Math.floor(Math.random() * 100) + 1, // Simulate battery level
-                status: "" // Default status, can be updated based on real data
-            }));
-        } catch (error) {
-            console.error("Error fetching online robots:", error);
-            return [];
+        const store = this;
+        const robots = ref<onlineRobot[]>([]);
+        const connected = ref(false);
+        const baseurl = useBaseURL();
+        // const baseurl = 'http://192.168.20.128:8000/';
+        let ws: WebSocket | null = null;
+        let reconnectDelay = 1000;
+        const maxDelay = 30_000;
+        let closedByUser = false;
+        let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+        function connect() {
+            closedByUser = false;
+
+            ws = new WebSocket(`${baseurl}robots/online/ws`);
+
+            ws.onopen = () => {
+            connected.value = true;
+            reconnectDelay = 1000; // reset backoff
+            };
+
+            ws.onmessage = (event) => {
+            try {
+                robots.value = JSON.parse(event.data) as onlineRobot[];
+                store.onlineRobots = robots.value.map((robot: onlineRobot) => ({
+                    ...robot,
+                    status: ""
+                }));
+                console.log("Received online robots update via WebSocket:", robots.value);
+            } catch (err) {
+                console.error("[robots-ws] bad payload", err);
+            }
+            };
+
+            ws.onclose = () => {
+            connected.value = false;
+            if (!closedByUser) scheduleReconnect();
+            };
+
+            ws.onerror = () => ws?.close(); // triggers onclose -> reconnect
         }
+
+        function scheduleReconnect() {
+            reconnectTimer = setTimeout(connect, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
+        }
+
+        function close() {
+            closedByUser = true;
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            ws?.close();
+            ws = null;
+        }
+
+        connect();
+        onUnmounted(close); // auto-cleanup when the component unmounts
+
+        return { robots, connected, close };
     },
     async getMap(config_id: number | null) {
         try{
@@ -426,6 +470,8 @@ interface onlineRobot {
     status: string; 
     timestamp: number;
 }
+export type { onlineRobot };
+
 interface DockStates {
     dock_type: string;
     dock_id: string;
