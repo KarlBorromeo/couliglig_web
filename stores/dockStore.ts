@@ -136,7 +136,7 @@ export const useDockStore = defineStore("dock", {
                     ...robot,
                     status: ""
                 }));
-                console.log("Received online robots update via WebSocket:", robots.value);
+                // console.log("Received online robots update via WebSocket:", robots.value);
             } catch (err) {
                 console.error("[robots-ws] bad payload", err);
             }
@@ -471,11 +471,20 @@ interface robotUpdatePose {
     initial_theta: number
     map_id: number
 }
+interface robotInfo {
+    id: number;
+    robot_name: string;
+    initial_x: number;
+    initial_y: number;
+    initial_theta: number;
+    map_id: number;
+}
 interface dockConfigs {
     id: number;
     name: string;
     description: string;
     is_active: boolean;
+    robot_infos: robotInfo[];
 }
 interface onlineRobot {
     ip: string;

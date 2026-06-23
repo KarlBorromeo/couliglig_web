@@ -20,8 +20,8 @@
           :disabled="!activateButton"
         ></v-select>
         <p class="text-caption">Description: {{ selectedDockConfig ? dockConfigs.find(config => config.id === selectedDockConfig)?.description : '' }}</p>
-        <v-btn color="primary" v-if="activateButton" @click="activateConfig" :disabled="!selectedDockConfig">Activate</v-btn>
-        <v-btn color="secondary" v-else @click="deactivateConfig">Deactivate</v-btn>
+        <!-- <v-btn color="primary" v-if="activateButton" @click="activateConfig" :disabled="!selectedDockConfig">Activate</v-btn>
+        <v-btn color="secondary" v-else @click="deactivateConfig">Deactivate</v-btn> -->
       </section>
     </v-col>
 
@@ -148,6 +148,11 @@
               />
             </v-col>
             <v-spacer />
+            <v-col>
+              <v-btn variant="plain" prepend-icon="mdi-home-circle-outline" v-if="selectedDockConfig && selectedRobotToDock" @click="goToInitialPose()">
+                Go to initial pose
+              </v-btn>              
+            </v-col>
           </v-row>
           </v-footer>
       </v-card>
@@ -467,7 +472,7 @@
       robots.forEach(robot => {
         if (rosConnections.has(robot.ip)) {
           console.log(
-            `Already connected to ROS bridge on ${robot.hostname} at ${robot.ip}`
+            // `Already connected to ROS bridge on ${robot.hostname} at ${robot.ip}`
           )
           return
         }
@@ -1112,6 +1117,35 @@
     }
 
     return { startRefresh, stopRefresh }
+  }
+
+  async function goToInitialPose() {
+    try {
+      loading.value = true
+      if (!selectedRobotToDock.value || !selectedDockConfig.value) {
+        throw new Error("Please select a robot, dock configuration, and dock to proceed with docking.")
+      }
+
+      const selectedRobot = toDockRobots.value.find(robot => robot.ip === selectedRobotToDock.value)
+      if (!selectedRobot) {
+        throw new Error(`Selected robot with IP ${selectedRobotToDock.value} not found in navigating robots.`)
+      }
+
+      const formData = new FormData();
+      formData.append("dock_id", 'initial_pose');
+      const response = await fetch(`http://${selectedRobot.ip}:8000/roslib/dock`, {
+          method: "POST",
+          body: formData
+      });
+
+      const result = await response.json();
+      // console.log(result)
+      loading.value = false
+      snackbar?.value.showSnackbar(result.message, "success")
+    } catch (error) {
+      loading.value = false
+      snackbar?.value.showSnackbar(error, "error")
+    }
   }
 
 </script>
