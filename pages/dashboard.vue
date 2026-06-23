@@ -1,5 +1,5 @@
 <template>
-  <div class="d-flex justify-space-around">
+  <div class="d-flex flex-wrap justify-space-around ga-4 pa-4">
     <v-menu>
       <template v-slot:activator="{ props }">
         <v-btn
