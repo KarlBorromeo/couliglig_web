@@ -427,8 +427,10 @@
   }
 
   const activateButton = ref(false)
+  const streamImageURL = ref('')
   onMounted(async () => {
     try{
+      streamImageURL.value = `${window.location.protocol}//${window.location.hostname}`;
       loading.value = true
       await dockStore.fetchDockConfigs()
       await dockStore.fetchOnlineRobotsWS()
@@ -859,7 +861,7 @@
       })
     })
   }
-
+  
   watch(selectedRobotToDock, (newIp) => {
 
     const ROS2D = (window as any).ROS2D
@@ -892,7 +894,7 @@
     }
     if (camera) {
       camera.innerHTML = `<iframe
-        src="http://192.168.20.244:8889/${robot_namespace}"
+        src="${streamImageURL.value}:8889/${robot_namespace}"
         width="400"
         height="400"
         autoplay
