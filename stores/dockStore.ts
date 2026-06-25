@@ -132,6 +132,9 @@ export const useDockStore = defineStore("dock", {
             ws.onmessage = (event) => {
             try {
                 robots.value = JSON.parse(event.data) as onlineRobot[];
+                store.onlineRobots = store.onlineRobots.filter(existing =>
+                    robots.value.some(robot => robot.ip === existing.ip)
+                );
                 // add only robots that is not existing on the list
                 for (const robot of robots.value) {
                     const exists = store.onlineRobots.some(
