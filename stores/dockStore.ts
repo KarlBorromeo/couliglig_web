@@ -441,8 +441,43 @@ export const useDockStore = defineStore("dock", {
             throw new Error(`Error deleting robot initial pose`);
         }
     },
+    async finishMapping(payload: finishMappingPayload): Promise<finishMappingResult> {
+        // Saves the robot's current SLAM map + the reviewed docks as a new dock config.
+        // Call this BEFORE stopping SLAM (the robot needs SLAM running to save the map).
+        try {
+            const baseurl = useBaseURL();
+            const res = await axios.post(`${baseurl}mapping/finish`, payload);
+            console.log("Mapping finished and saved:", res.data);
+            return res.data;
+        } catch (error: any) {
+            console.error("Error finishing mapping:", error.response?.data?.detail || error);
+            throw new Error(formatFinishMappingError(error));
+        }
+    },
   }
 });
+
+function formatFinishMappingError(error: any): string {
+    const status: number | undefined = error?.response?.status;
+    const detail = error?.response?.data?.detail;
+    let message = "";
+    if (typeof detail === "string") {
+        message = detail;
+    } else if (Array.isArray(detail)) {
+        // FastAPI 422 validation errors
+        message = detail.map((d: any) => d?.msg ? `${(d.loc ?? []).slice(1).join(".")}: ${d.msg}` : JSON.stringify(d)).join("; ");
+    } else if (detail && typeof detail === "object") {
+        message = typeof detail.message === "string" ? detail.message : JSON.stringify(detail);
+    }
+    if (!message) message = error?.message || "Error finishing mapping";
+    const prefix: Record<number, string> = {
+        404: "Robot offline: ",
+        409: "Conflict: ",
+        422: "Invalid data: ",
+        502: "Robot failed: ",
+    };
+    return (status && prefix[status] ? prefix[status] : "") + message;
+}
 
 interface createDockConfig {
   name: string;
@@ -530,3 +565,21 @@ interface robotData {
     namespace: string;
     robot_ip: string;
 }
+interface finishMappingDock {
+    aruco_id: number;
+    dock_id: string;
+    dock_type: string;
+}
+interface finishMappingPayload {
+    hostname: string;
+    name: string;
+    description: string;
+    docks: finishMappingDock[];
+}
+interface finishMappingResult {
+    dock_config_id: number;
+    map_id: number;
+    docks_created: number;
+    unreviewed: number[];
+}
+export type { finishMappingPayload, finishMappingResult };

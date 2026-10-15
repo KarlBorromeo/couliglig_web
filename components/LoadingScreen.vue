@@ -8,6 +8,7 @@
           size="64"
           width="6"
         />
+        <p v-if="text" class="mt-4 text-body-1 font-weight-medium">{{ text }}</p>
       </div>
     </div>
   </transition>
@@ -18,6 +19,10 @@ defineProps({
   modelValue: {
     type: Boolean,
     default: true
+  },
+  text: {
+    type: String,
+    default: ''
   }
 })
 </script>
@@ -38,6 +43,7 @@ defineProps({
 
 .loader {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
 }
