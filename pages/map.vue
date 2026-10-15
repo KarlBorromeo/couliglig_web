@@ -504,7 +504,9 @@ import {
     await navigateTo("/edit-config")
   }
 
-  const ros = ref<any>(null)
+  // shallowRef: a plain ref would wrap the ROSLIB.Ros in a reactive proxy,
+  // so the `ros.value !== thisRos` guard below would always bail out
+  const ros = shallowRef<any>(null)
   watch(selectedRobot, (robotIp) => {
     console.log("Selected robot IP:", robotIp)
     const robot = activeRobots.value.find(r => r.ip === robotIp)
