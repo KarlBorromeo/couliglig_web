@@ -71,7 +71,7 @@
     </v-col>
 
     <v-row>
-      <v-col cols="12" :lg="showDockPanel ? 7 : 12">
+      <v-col cols="12" :lg="selectedRobot ? 7 : 12">
         <v-card elevation="3">
           <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
           <v-card-text>
@@ -88,12 +88,20 @@
           </v-card-text>
         </v-card>
       </v-col>
-      <v-col v-if="showDockPanel" cols="12" lg="5">
+      <v-col v-if="selectedRobot" cols="12" lg="5" class="d-flex flex-column ga-4">
+        <CameraFeedCard
+          :src="cameraStreamURL"
+          :label="selectedRobotInfo?.namespace"
+          :collapsed="cameraCollapsed"
+          @update:collapsed="setCameraCollapsed"
+        />
         <DetectedDocksPanel
+          v-if="showDockPanel"
           :docks="detectedDocks"
           :edits="dockEdits"
           :selected-id="selectedDockId"
           :mapping="isSelectedRobotMapping()"
+          :max-height="cameraCollapsed ? '720px' : '440px'"
           @update="updateDockEdit"
           @select="selectDock"
         />
@@ -114,6 +122,7 @@
 import Snackbar from '~/components/snackbar.vue'
 import DetectedDocksPanel from '~/components/DetectedDocksPanel.vue'
 import FinishMappingDialog from '~/components/FinishMappingDialog.vue'
+import CameraFeedCard from '~/components/CameraFeedCard.vue'
 import {
   DockMarkerLayer,
   bareFrame,
@@ -234,6 +243,12 @@ import {
   }
 
   onMounted(async () => {
+    streamHost.value = `${window.location.protocol}//${window.location.hostname}`
+    try {
+      cameraCollapsed.value = localStorage.getItem(CAMERA_COLLAPSED_KEY) === "1"
+    } catch (err) {
+      console.warn("Could not read camera state:", err)
+    }
     try{
       loading.value = true
       // await Promise.reject(new Error("Simulated fetch error"))
@@ -334,6 +349,24 @@ import {
       ?? dockStore.onlineRobots.find(r => r.ip === selectedRobot.value)
       ?? null
   )
+
+  // MediaMTX WebRTC player for the robot's detector stream (same as dashboard/navigation)
+  const streamHost = ref("")
+  const cameraStreamURL = computed(() => {
+    const ns = selectedRobotInfo.value?.namespace
+    return streamHost.value && ns ? `${streamHost.value}:8889/${ns}` : null
+  })
+
+  const CAMERA_COLLAPSED_KEY = "mapping-camera-collapsed"
+  const cameraCollapsed = ref(false)
+  function setCameraCollapsed(value: boolean) {
+    cameraCollapsed.value = value
+    try {
+      localStorage.setItem(CAMERA_COLLAPSED_KEY, value ? "1" : "0")
+    } catch (err) {
+      console.warn("Could not save camera state:", err)
+    }
+  }
 
   const showDockPanel = computed(() => !!selectedRobot.value && (isSelectedRobotMapping() || detectedDocks.value.length > 0))
 

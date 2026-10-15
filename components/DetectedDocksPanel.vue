@@ -1,5 +1,5 @@
 <template>
-  <v-card elevation="3" class="d-flex flex-column" style="max-height: 780px;">
+  <v-card elevation="3" class="d-flex flex-column" :style="{ maxHeight: maxHeight ?? '780px' }">
     <v-card-title class="d-flex align-center">
       <v-icon size="20" color="blue">mdi-anchor</v-icon>
       <span class="ml-1">Detected Docks ({{ docks.length }})</span>
@@ -94,6 +94,7 @@ const props = defineProps<{
   edits: DockEdits
   selectedId: number | null
   mapping: boolean
+  maxHeight?: string
 }>()
 
 const emit = defineEmits<{
