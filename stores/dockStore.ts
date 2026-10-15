@@ -5,7 +5,7 @@ export const useBaseURL = () => {
   if (typeof window === 'undefined') {
     return 'http://localhost:8000/'
   }
-//   return 'http://192.168.20.128:8000/'
+//   return 'http://192.168.110.7:8000/'
   return `${window.location.protocol}//${window.location.hostname}:8000/`
 }
 
@@ -132,11 +132,23 @@ export const useDockStore = defineStore("dock", {
             ws.onmessage = (event) => {
             try {
                 robots.value = JSON.parse(event.data) as onlineRobot[];
-                store.onlineRobots = robots.value.map((robot: onlineRobot) => ({
-                    ...robot,
-                    status: ""
-                }));
-                // console.log("Received online robots update via WebSocket:", robots.value);
+                store.onlineRobots = store.onlineRobots.filter(existing =>
+                    robots.value.some(robot => robot.ip === existing.ip)
+                );
+                // add only robots that is not existing on the list
+                for (const robot of robots.value) {
+                    const exists = store.onlineRobots.some(
+                        existing => existing.ip === robot.ip
+                    );
+
+                    if (!exists) {
+                        console.log('pushing robot to online robots')
+                        store.onlineRobots.push({
+                        ...robot,
+                        status: ""
+                        });
+                    }
+                }
             } catch (err) {
                 console.error("[robots-ws] bad payload", err);
             }

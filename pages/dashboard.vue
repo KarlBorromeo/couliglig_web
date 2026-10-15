@@ -53,7 +53,7 @@
           <div v-for="robot in runnningRobots" :key="robot.ip" class="d-flex flex-column align-center ga-1">
             <div style="font-weight: bold;">Camera - {{ robot.hostname }}</div>
             <iframe
-              :src="`http://192.168.20.244:8889/${robot.namespace}`"
+              :src="`${streamImageURL}:8889/${robot.namespace}`"
               width="320"
               height="240"
               frameborder="0"
@@ -83,6 +83,7 @@
   const runnningRobots = computed(() => dockStore.toDockRobots)
   const rosConnections = new Map<string, any>()
   const loading = ref(false)
+  const streamImageURL = ref('')
 
   async function refreshRobots() {
     loading.value = true
@@ -92,6 +93,7 @@
 
   onMounted(async () => {
     try{
+      streamImageURL.value = `${window.location.protocol}//${window.location.hostname}`;
       loading.value = true
       // await Promise.reject(new Error("Simulated fetch error"))
       await dockStore.fetchOnlineRobotsWS()
@@ -104,7 +106,7 @@
   })
   watch(() => dockStore.onlineRobots,
     (robots) => {
-      console.log("Received robots update in dashboard:", robots)
+      // console.log("Received robots update in dashboard:", robots)
       const ROSLIB = (window as any).ROSLIB
 
         // Current online robot IPs
@@ -126,7 +128,7 @@
       robots.forEach(robot => {
         if (rosConnections.has(robot.ip)) {
           console.log(
-            `Already connected to ROS bridge on ${robot.hostname} at ${robot.ip}`
+            // `Already connected to ROS bridge on ${robot.hostname} at ${robot.ip}`
           )
           return
         }
