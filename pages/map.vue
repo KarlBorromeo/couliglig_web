@@ -73,17 +73,43 @@
     <v-row>
       <v-col cols="12" :lg="selectedRobot ? 7 : 12">
         <v-card elevation="3">
-          <v-card-title ><v-icon size="20">mdi-map-outline</v-icon> Live Map Render</v-card-title>
+          <v-card-title class="d-flex align-center">
+            <v-icon size="20">mdi-map-outline</v-icon>
+            <span class="ml-1">Live Map</span>
+          </v-card-title>
           <v-card-text>
-            <div class="d-flex align-center justify-center" style="height: 700px; background-color: #f5f5f5; border: 1px solid #ddd; overflow: auto;">
-              <span v-if="!selectedRobot" class="text-center" style="color: #888;">Select a robot to view its map</span>
-              <span id="map"/>
-            </div>
-            <p class="mt-2 text-caption">
-              <span style="color: rgb(255, 0, 0);">&#9650;</span> robot ·
-              <span style="color: rgb(25, 118, 210);">&#9650;</span> dock ·
-              <span style="color: rgb(158, 158, 158);">&#9650;</span> skipped ·
-              <span style="color: rgb(255, 193, 7);">&#9650;</span> selected
+            <MapViewer
+              ref="mapViewer"
+              height="min(72vh, 720px)"
+              :empty-text="selectedRobot ? 'Waiting for /map from the robot…' : 'Select a robot to view its map'"
+              :robots="mapRobots"
+              :docks="mapDocks"
+              :selected-dock-id="selectedDockId !== null ? String(selectedDockId) : null"
+              :follow-robot-id="mapRobots.length ? MAP_ROBOT_ID : null"
+              :trail-robot-id="mapRobots.length ? MAP_ROBOT_ID : null"
+              @select-dock="id => selectDock(Number(id))"
+            >
+              <template #status="{ stats }">
+                <div class="map-status-row">
+                  <span class="live-dot" :class="{ idle: !isSelectedRobotMapping() }" />
+                  <strong>{{ isSelectedRobotMapping() ? 'Mapping' : 'Not mapping' }}</strong>
+                </div>
+                <div class="map-status-num">
+                  {{ stats.freeArea.toFixed(0) }} m² explored · {{ detectedDocks.length }} dock{{ detectedDocks.length === 1 ? '' : 's' }}
+                </div>
+              </template>
+              <template #legend>
+                <div class="map-legend">
+                  <span class="sw robot" /><span>Robot</span>
+                  <span class="sw dock" /><span>Dock, ring shows how settled</span>
+                  <span class="sw dock skipped" /><span>Skipped</span>
+                  <span class="sw wall" /><span>Wall</span>
+                  <span class="sw unknown" /><span>Not seen yet</span>
+                </div>
+              </template>
+            </MapViewer>
+            <p class="mt-2 text-caption text-medium-emphasis">
+              Scroll to zoom, drag to pan. Click a dock to select it in the list.
             </p>
           </v-card-text>
         </v-card>
@@ -123,10 +149,11 @@ import Snackbar from '~/components/snackbar.vue'
 import DetectedDocksPanel from '~/components/DetectedDocksPanel.vue'
 import FinishMappingDialog from '~/components/FinishMappingDialog.vue'
 import CameraFeedCard from '~/components/CameraFeedCard.vue'
+import MapViewer from '~/components/MapViewer.vue'
 import {
-  DockMarkerLayer,
   bareFrame,
   composePose2D,
+  dockFixLevel,
   nextDockId,
   sanitizeDockEdits,
   tfToPose2D,
@@ -136,6 +163,7 @@ import {
   type FinishMappingDock,
   type Pose2D
 } from '~/utils/dockMarkers'
+import { gridFromMessage, type MapDockMarker, type RobotMeta } from '~/utils/mapRenderer'
 
   const snackbar = ref<any>(null) 
   const dockStore = useDockStore()
@@ -337,9 +365,11 @@ import {
   const loadingText = ref("")
   let draftHostname: string | null = null
 
-  // map overlay state, hoisted out of the ROS connection callback
-  let viewer: any = null
-  let dockLayer: DockMarkerLayer | null = null
+  // map view state, hoisted out of the ROS connection callback
+  const MAP_ROBOT_ID = "robot"
+  const mapViewer = ref<InstanceType<typeof MapViewer> | null>(null)
+  let mapTopic: any = null
+  let tfTopic: any = null
   let docksTopic: any = null
   let mapToOdom: Pose2D | null = null
   let odomToBase: Pose2D | null = null
@@ -367,6 +397,30 @@ import {
       console.warn("Could not save camera state:", err)
     }
   }
+
+  // the mapping robot, drawn in the map's accent colour with a trail
+  const mapRobots = computed<RobotMeta[]>(() =>
+    selectedRobotInfo.value ? [{ id: MAP_ROBOT_ID, color: "#e8590c" }] : []
+  )
+
+  // detected docks as map pins: ArUco id on the badge, settledness ring, operator's name as label
+  const mapDocks = computed<MapDockMarker[]>(() =>
+    detectedDocks.value.map((dock) => {
+      const edit = dockEdits.value[dock.aruco_id]
+      const skipped = edit?.ignored === true
+      return {
+        id: String(dock.aruco_id),
+        x: dock.x,
+        y: dock.y,
+        theta: dock.theta,
+        shape: "pin",
+        badge: String(dock.aruco_id),
+        label: skipped ? `${edit?.dock_id || "dock"} · skipped` : (edit?.dock_id || "dock"),
+        level: dockFixLevel(dock),
+        muted: skipped
+      }
+    })
+  )
 
   const showDockPanel = computed(() => !!selectedRobot.value && (isSelectedRobotMapping() || detectedDocks.value.length > 0))
 
@@ -399,7 +453,6 @@ import {
     dockEdits.value = {}
     detectedDocks.value = []
     selectedDockId.value = null
-    redrawDockMarkers()
     if (!draftHostname) return
     try {
       localStorage.removeItem(draftKey(draftHostname))
@@ -417,9 +470,6 @@ import {
       console.warn("Could not save mapping draft:", err)
     }
   }, { deep: true })
-
-  // name / skip / selection changes are reflected on the map immediately
-  watch([dockEdits, selectedDockId], () => redrawDockMarkers(), { deep: true })
 
   function onDetectedDocks(msg: any) {
     const docks: DetectedDock[] = (msg?.docks ?? [])
@@ -446,15 +496,10 @@ import {
     if (selectedDockId.value !== null && !docks.some(d => d.aruco_id === selectedDockId.value)) {
       selectedDockId.value = null
     }
-    redrawDockMarkers()
 
     if (newIds.length) {
       snackbar.value?.showSnackbar(`Dock detected: ArUco ${newIds.join(", ")}`, "success")
     }
-  }
-
-  function redrawDockMarkers() {
-    dockLayer?.sync(detectedDocks.value, dockEdits.value, selectedDockId.value, viewer?.scene?.scaleX)
   }
 
   function updateDockEdit(arucoId: number, patch: Partial<DockEdit>) {
@@ -468,22 +513,12 @@ import {
   }
 
   function teardownMapView() {
-    if (docksTopic) {
-      try { docksTopic.unsubscribe() } catch (err) { console.error(err) }
-      docksTopic = null
+    for (const topic of [docksTopic, mapTopic, tfTopic]) {
+      if (!topic) continue
+      try { topic.unsubscribe() } catch (err) { console.error(err) }
     }
-    dockLayer?.destroy()
-    dockLayer = null
-    if (viewer) {
-      try {
-        // ROS2D.Viewer registers its stage on the global Ticker; unregister it
-        (window as any).createjs?.Ticker.removeEventListener("tick", viewer.scene)
-        viewer.scene.removeAllChildren()
-      } catch (err) {
-        console.error(err)
-      }
-      viewer = null
-    }
+    docksTopic = mapTopic = tfTopic = null
+    mapViewer.value?.clear()
     detectedDocks.value = []
     selectedDockId.value = null
     mapToOdom = null
@@ -555,8 +590,6 @@ import {
     }
 
     const ROSLIB = (window as any).ROSLIB
-    const ROS2D = (window as any).ROS2D
-    const createjs = (window as any).createjs
 
     const thisRos = new ROSLIB.Ros({
       url: `ws://${robot.ip}:9090`
@@ -567,70 +600,26 @@ import {
       // ignore late connections from a robot that is no longer selected
       if (ros.value !== thisRos) return
 
-      const mapContainer = document.getElementById("map")
-      if (mapContainer) mapContainer.innerHTML = ""
-
-      const thisViewer = new ROS2D.Viewer({
-        divID: "map",
-        width: 700,
-        height: 700
+      // the map grows while SLAM runs, so keep the subscription open
+      mapTopic = new ROSLIB.Topic({
+        ros: thisRos,
+        name: "/map",
+        messageType: "nav_msgs/msg/OccupancyGrid"
       })
-      viewer = thisViewer
-
-      const gridClient = new ROS2D.OccupancyGridClient({
-        ros: ros.value,
-        rootObject: thisViewer.scene,
-        topic: "/map",
-        continuous: true
+      mapTopic.subscribe((msg: any) => {
+        if (ros.value !== thisRos) return
+        mapViewer.value?.setGrid(gridFromMessage(msg))
       })
-
-      gridClient.on("change", () => {
-        const grid = gridClient.currentGrid
-        if (!grid) return
-
-        thisViewer.scaleToDimensions(grid.width, grid.height)
-        thisViewer.shift(grid.pose.position.x, grid.pose.position.y)
-        // keep dock labels a constant on-screen size after rescaling
-        redrawDockMarkers()
-
-        // console.log('[MAP INFO]', {
-        //   resolution: grid.resolution,
-        //   width: grid.width,
-        //   height: grid.height,
-        //   origin: grid.pose.position
-        // });
-      })
-
-      const tfClient = new ROSLIB.TFClient({
-        ros: ros.value,
-        fixedFrame: "map",
-        angularThres: 0.01,
-        transThres: 0.01,
-        rate: 10,
-        topic: `/${robot.namespace}/tf`,
-        staticTopic: `/${robot.namespace}/tf_static`
-      })
-
-      const robotMarker = new ROS2D.ArrowShape({
-        size: 0.6,
-        strokeSize: 0.05,
-        strokeColor: createjs.Graphics.getRGB(255,0,0),
-        fillColor: createjs.Graphics.getRGB(255,0,0)
-      })
-
-      dockLayer = new DockMarkerLayer(selectDock)
-      thisViewer.scene.addChild(dockLayer.container)
-      thisViewer.scene.addChild(robotMarker)
 
       docksTopic = new ROSLIB.Topic({
-        ros: ros.value,
+        ros: thisRos,
         name: `/${robot.namespace}/detected_docks`,
         messageType: "custom_msgs/msg/DetectedDockArray"
       })
       docksTopic.subscribe(onDetectedDocks)
 
-      const tfTopic = new ROSLIB.Topic({
-        ros: ros.value,
+      tfTopic = new ROSLIB.Topic({
+        ros: thisRos,
         name: `/${robot.namespace}/tf`,
         messageType: "tf2_msgs/msg/TFMessage"
       })
@@ -650,10 +639,27 @@ import {
 
         // robot pose in map = (map -> odom) ∘ (odom -> base_footprint); identity until SLAM publishes map -> odom
         const pose = mapToOdom ? composePose2D(mapToOdom, odomToBase) : odomToBase
-        robotMarker.x = pose.x
-        robotMarker.y = -pose.y
-        robotMarker.rotation = -pose.yaw * 180 / Math.PI
+        mapViewer.value?.setRobotPose(MAP_ROBOT_ID, pose)
       })
     })
   })
 </script>
+<style scoped>
+  /* chips on the map (MapViewer slots); colours match the map palette in MapViewer.vue */
+  .map-status-row { display: flex; align-items: center; gap: 8px; }
+  .map-status-num { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; color: #5b6876; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #e8590c; animation: live 1.6s infinite; }
+  .live-dot.idle { background: #8a96a3; animation: none; }
+  @keyframes live {
+    0% { box-shadow: 0 0 0 0 rgba(232, 89, 12, 0.6); }
+    100% { box-shadow: 0 0 0 8px rgba(232, 89, 12, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+  .map-legend { display: grid; grid-template-columns: auto auto; gap: 3px 8px; align-items: center; }
+  .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid #d6dce3; justify-self: center; }
+  .sw.robot { border-radius: 50%; background: #e8590c; border-color: #e8590c; }
+  .sw.dock { width: 10px; height: 10px; border-radius: 50%; background: #1c6fd1; border: 2px solid #fff; outline: 2px solid #1c6fd1; }
+  .sw.dock.skipped { background: #8a96a3; outline-color: #8a96a3; }
+  .sw.wall { background: #1e2a36; }
+  .sw.unknown { background: #e3e8ee; }
+</style>

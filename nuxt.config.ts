@@ -18,15 +18,7 @@ export default defineNuxtConfig({
           defer: true
         },
         {
-          src: "/easeljs.min.js",
-          defer: true
-        },
-        {
           src: "/roslib.min.js",
-          defer: true
-        },
-        {
-          src: "/ros2d.min.js",
           defer: true
         },
       ]

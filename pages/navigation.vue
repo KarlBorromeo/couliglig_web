@@ -158,38 +158,73 @@
       </v-card>
     </v-col>
     <v-col>
-      <v-card elevation="3">
-        <v-card-title>
-          <div>
-            <v-icon size="20">mdi-map-outline</v-icon>
-            Live Map and Camera Render
-          </div>
-
-          <!-- Robot Color Legend -->
-          <div class="d-flex align-center ga-4">
-            <div
-              v-for="(legend, key) in legendColor()"
-              :key="key"
-              class="d-flex align-center ga-2"
-            >
-              <div
-                class="robot-color"
-                :style="{
-                  backgroundColor: legend.color
-                }"
-              ></div>
-              <span class="robot-label">{{ legend.name }}</span>
-            </div>
-          </div>
-
-        </v-card-title>
-        <v-card-text>
-          <div class="d-flex align-center justify-center flex-wrap ga-5" style="min-height: 600px; background-color: #f5f5f5; border: 1px solid #ddd;">
-            <span id="map"/>
-            <span id="camera" />
-          </div>
-        </v-card-text>
-      </v-card>
+      <v-row>
+        <v-col cols="12" :lg="cameraSrc ? 8 : 12">
+          <v-card elevation="3">
+            <v-card-title class="d-flex align-center flex-wrap ga-2">
+              <span class="d-flex align-center">
+                <v-icon size="20">mdi-map-outline</v-icon>
+                <span class="ml-1">Live Map</span>
+              </span>
+              <v-spacer />
+              <div class="layer-toggles" role="group" aria-label="Map layers">
+                <button
+                  v-for="layer in LAYER_TOGGLES"
+                  :id="`layer-${layer.key}`"
+                  :key="layer.key"
+                  type="button"
+                  :aria-pressed="mapLayers[layer.key]"
+                  @click="mapLayers[layer.key] = !mapLayers[layer.key]"
+                >
+                  <i :style="{ background: layer.color }" />{{ layer.label }}
+                </button>
+              </div>
+            </v-card-title>
+            <v-card-text>
+              <MapViewer
+                ref="mapViewer"
+                height="min(70vh, 680px)"
+                :empty-text="toDockRobots.length ? 'Waiting for /map…' : 'The map appears when a robot is navigating'"
+                :robots="mapRobots"
+                :docks="mapDocks"
+                :selected-robot-id="selectedRobotToDock"
+                :selected-dock-id="selectedDockId"
+                :follow-robot-id="selectedRobotToDock"
+                :layers="mapLayers"
+                :fit-pad-top="70"
+                @select-robot="onMapSelectRobot"
+                @select-dock="onMapSelectDock"
+              >
+                <template #status>
+                  <strong>{{ mapInfo.title }}</strong>
+                  <div v-for="line in mapInfo.lines" :key="line" class="map-info-line">{{ line }}</div>
+                </template>
+                <template #legend>
+                  <div class="map-legend">
+                    <template v-for="robot in toDockRobots" :key="robot.ip">
+                      <span class="sw robot" :style="{ background: robotColor(robot.namespace) }" />
+                      <span>{{ shortName(robot.namespace) }}</span>
+                    </template>
+                  </div>
+                </template>
+              </MapViewer>
+              <p class="mt-2 text-caption text-medium-emphasis">
+                Click a ready robot to pick it for docking, or a dock to pick it as the target.
+                Docks: P pickup · R receiver · W waiting zone · H hand-off; a box means an item is waiting.
+                Costmaps are shown for the robot picked for docking.
+              </p>
+            </v-card-text>
+          </v-card>
+        </v-col>
+        <v-col v-if="cameraSrc" cols="12" lg="4">
+          <CameraFeedCard
+            :src="cameraSrc"
+            :label="selectedNamespace ?? undefined"
+            :collapsed="cameraCollapsed"
+            @update:collapsed="setCameraCollapsed"
+          />
+        </v-col>
+      </v-row>
     </v-col>
 
     <v-col>
@@ -271,6 +306,11 @@
 </template>
 
 <script setup lang="ts">
+import MapViewer from '~/components/MapViewer.vue'
+import CameraFeedCard from '~/components/CameraFeedCard.vue'
+import { bareFrame, composePose2D, tfToPose2D, type Pose2D } from '~/utils/dockMarkers'
+import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } from '~/utils/mapRenderer'
+
   const dockStore = useDockStore()
   const selectedRobotsToLaunch = ref<string[]>([])
   const selectedRobotToDock = ref(null)
@@ -371,7 +411,7 @@
       if (res.success) {
         loading.value = false
 
-        removeCostmapCamera()
+        clearCostmaps()
         snackbar?.value.showSnackbar(res.message, "success")
       } else {
         throw new Error(res.message || "Failed to stop the robot.")
@@ -615,21 +655,31 @@
     }
   }
 
-  let viewer:any = null
-  let rosMapConnection:any = null
+  // ===========================================================================
+  // Live map: map from the first running robot, every robot's pose and Nav2 plan,
+  // configured docks with their states, and the selected robot's costmaps
+  // ===========================================================================
+  const mapViewer = ref<InstanceType<typeof MapViewer> | null>(null)
+  const mapLayers = reactive<MapLayers>({ globalCostmap: true, localCostmap: true, paths: true, labels: true })
+  const LAYER_TOGGLES: { key: keyof MapLayers; label: string; color: string }[] = [
+    { key: "globalCostmap", label: "Global costmap", color: "#6741d9" },
+    { key: "localCostmap", label: "Local costmap", color: "#e67700" },
+    { key: "paths", label: "Paths", color: "#16202b" },
+    { key: "labels", label: "Labels", color: "#8a96a3" },
+  ]
+  const DOCK_LETTER: Record<string, string> = { pickup: "P", receiver: "R", waiting_zone: "W", hand_off: "H" }
+  const DOCK_TYPE_NAME: Record<string, string> = { pickup: "Pickup", receiver: "Receiver", waiting_zone: "Waiting zone", hand_off: "Hand-off" }
+
+  let rosMapConnection: any = null
   let mapProviderIp: string | null = null
 
-  let rosMarkerConnections: any[] = []
-  let markerProviderIPs: string[] = []
-  let robotMarkers: Record<string, any> = {}
-  let mapOdom: Record<string, any> = {}
-  let odomBase: Record<string, any> = {}
-  let odomBaseRot: Record<string, any> = {}
-  let arrowColors: Record<string, number[]> = {}
+  // one rosbridge connection per running robot, for its TF and Nav2 plan
+  const robotLinks = new Map<string, any>()
+  // per robot IP: map -> odom (AMCL) and odom -> base_footprint (odometry), as 2D poses incl. yaw
+  const mapOdom: Record<string, Pose2D> = {}
+  const odomBase: Record<string, Pose2D> = {}
 
-  let costmapConnection: any  = null
-  let localCostmaps: any = null
-  let globalCostmaps: any = null
+  let costmapConnection: any = null
 
   const colorDict: Record<string, number[]> = {
     couliglig_bot_1: [255, 0, 0],    // red
@@ -640,246 +690,222 @@
     couliglig_bot_6: [255, 50, 120], // pink
   }
 
-  watch(toDockRobots, async (robots) => {
+  // Same colour for a namespace everywhere (marker, path, legend) and on every render:
+  // known namespaces use colorDict, others get a hue derived from the name.
+  function robotColor(namespace: string): string {
+    let rgb = colorDict[namespace]
+    if (!rgb) {
+      let hash = 0
+      for (let i = 0; i < namespace.length; i++) hash = (hash * 31 + namespace.charCodeAt(i)) >>> 0
+      rgb = hslToRgb(hash % 360, 0.7, 0.5)
+    }
+    return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`
+  }
 
-    const ROS2D = (window as any).ROS2D
-    const ROSLIB = (window as any).ROSLIB
-    const createjs = (window as any).createjs
+  function hslToRgb(h: number, s: number, l: number): number[] {
+    const a = s * Math.min(l, 1 - l)
+    const f = (n: number) => {
+      const k = (n + h / 30) % 12
+      return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1))))
+    }
+    return [f(0), f(8), f(4)]
+  }
 
-    // remove all connections and markers if no robots are running
-    if (robots.length === 0) {
-      // console.log("No running robots detected.")
-      if (viewer) {
-        viewer.scene.clear()
-        viewer = null
-        const div = document.getElementById("map")
-        if (div) {
-          div.innerHTML = ""
-        }
-      }
-      if (rosMapConnection) {
-        rosMapConnection.close()
-        rosMapConnection = null
-      }
+  const shortName = (namespace: string) => namespace.replace(/^couliglig_/, "")
 
-      mapProviderIp = null
+  const mapRobots = computed<RobotMeta[]>(() =>
+    toDockRobots.value.map((robot) => ({
+      id: robot.ip,
+      color: robotColor(robot.namespace),
+      label: robot.status ? `${shortName(robot.namespace)} · ${robot.status}` : shortName(robot.namespace),
+      showPath: robot.status.toLowerCase().startsWith("navigating"),
+    }))
+  )
 
-      markerProviderIPs.length = 0
-
-      rosMarkerConnections.forEach((ros) => ros.close())
-      rosMarkerConnections.length = 0
-      
-      for (const ip in robotMarkers) {
-        delete robotMarkers[ip]
-      }
-      for (const ip in mapOdom) {
-        delete mapOdom[ip]
-      }
-      for (const ip in odomBase) {
-        delete odomBase[ip]
-      }
-      for (const ip in odomBaseRot) {
-        delete odomBaseRot[ip]
-      }
-      return
-    }  
-
-    // cleanup connections and markers for robots that are no longer running
-    const activeIpKeys = toDockRobots.value.map(robot => robot.ip)
-    const tempMarkerProviderIPs = [...markerProviderIPs]
-    tempMarkerProviderIPs.forEach((ip, ind) => {
-      if (!activeIpKeys.includes(ip)) {
-
-        markerProviderIPs.splice(ind, 1)
-
-        rosMarkerConnections[ind].close()
-        rosMarkerConnections.splice(ind, 1)
-
-        if (robotMarkers[ip]) {
-          viewer.scene.removeChild(robotMarkers[ip])
-          delete robotMarkers[ip]
-        }
-
-        delete mapOdom[ip]
-        delete odomBase[ip]
-        delete odomBaseRot[ip]
-        delete arrowColors[ip]
-      }
-    })
-    // console.log("Marker provider IPs:", markerProviderIPs)
-    // console.log("ROS marker connections:", rosMarkerConnections)
-    // console.log("Robot markers:", robotMarkers)
-    // console.log("Map Odom", mapOdom)
-    // console.log("Odom Base", odomBase)
-    // console.log("Odom Base Rot", odomBaseRot)
-
-    // console.log("Running robots detected:", robots.map((r:any) => r.hostname).join(", "))
-    initMap(ROSLIB,ROS2D)
-    drawArrowToViewer(ROSLIB, ROS2D, createjs)
+  const dockStates = computed(() => {
+    const states = new Map<string, any>()
+    ;[...dock_pickups.value, ...docks_receivers.value].forEach((state: any) => states.set(state.dock_id, state))
+    return states
   })
 
-  function initMap(ROSLIB: any, ROS2D: any) {
+  const mapDocks = computed<MapDockMarker[]>(() =>
+    docks.value.map((dock: any) => {
+      const state = dockStates.value.get(dock.dock_id)
+      const occupant = state?.status === "occupied" && state.robot_id
+        ? toDockRobots.value.find(robot => robot.namespace === state.robot_id || robot.hostname === state.robot_id)
+        : undefined
+      const notes = [state?.item_id, state?.status === "reserved" ? "reserved" : ""].filter(Boolean)
+      return {
+        id: dock.dock_id,
+        x: dock.x,
+        y: dock.y,
+        theta: dock.theta,
+        shape: "tile",
+        badge: DOCK_LETTER[dock.dock_type] ?? "?",
+        label: [dock.dock_id, ...notes].join(" · "),
+        fill: occupant ? robotColor(occupant.namespace) : null,
+        hasItem: !!state?.item_id,
+      }
+    })
+  )
 
-    const firstRobot: any = toDockRobots.value[0]
+  // what the chip on the map says about the current selection
+  const mapInfo = computed(() => {
+    if (selectedDockId.value) {
+      const dock: any = docks.value.find((d: any) => d.dock_id === selectedDockId.value)
+      const state = dockStates.value.get(selectedDockId.value)
+      return {
+        title: selectedDockId.value,
+        lines: [
+          `${DOCK_TYPE_NAME[dock?.dock_type] ?? dock?.dock_type ?? ""} · ArUco ${dock?.aruco_id ?? "?"}`,
+          [state?.status, state?.robot_id, state?.item_id].filter(Boolean).join(" · ") || "No state",
+        ],
+      }
+    }
+    const robot = toDockRobots.value.find(r => r.ip === selectedRobotToDock.value)
+    if (robot) return { title: robot.namespace, lines: [`${robot.status || "unknown"} · battery ${robot.battery}%`] }
+    const n = toDockRobots.value.length
+    return { title: `${n} robot${n === 1 ? "" : "s"} running`, lines: ["Click a ready robot or a dock"] }
+  })
 
-    // If already connected to this robot, do nothing
-    if (mapProviderIp === firstRobot.ip) {
+  function onMapSelectRobot(ip: string) {
+    const robot = toDockRobots.value.find(r => r.ip === ip)
+    if (!robot) return
+    if (robot.status.toUpperCase() !== "READY") {
+      snackbar.value?.showSnackbar(`${robot.namespace} is ${robot.status || "busy"}; only READY robots can be docked`, "warning")
       return
     }
+    selectedRobotToDock.value = ip as any
+  }
 
-    // Close previous map connection
+  function onMapSelectDock(dockId: string) {
+    selectedDockId.value = dockId as any
+  }
+
+  // camera of the selected robot, beside the map
+  const CAMERA_COLLAPSED_KEY = "navigation-camera-collapsed"
+  const cameraCollapsed = ref(false)
+  const selectedNamespace = computed(() => toDockRobots.value.find(r => r.ip === selectedRobotToDock.value)?.namespace ?? null)
+  const cameraSrc = computed(() =>
+    streamImageURL.value && selectedNamespace.value ? `${streamImageURL.value}:8889/${selectedNamespace.value}` : null
+  )
+  function setCameraCollapsed(value: boolean) {
+    cameraCollapsed.value = value
+    try { localStorage.setItem(CAMERA_COLLAPSED_KEY, value ? "1" : "0") } catch (err) { console.warn("Could not save camera state:", err) }
+  }
+  onMounted(() => {
+    try { cameraCollapsed.value = localStorage.getItem(CAMERA_COLLAPSED_KEY) === "1" } catch (err) { console.warn("Could not read camera state:", err) }
+  })
+
+  function closeRobotLink(ip: string) {
+    try { robotLinks.get(ip)?.close() } catch (err) { console.error(err) }
+    robotLinks.delete(ip)
+    delete mapOdom[ip]
+    delete odomBase[ip]
+    mapViewer.value?.setPath(ip, null)
+  }
+
+  function closeMapConnections() {
     rosMapConnection?.close()
     rosMapConnection = null
-
-    // Update the map provider IP
-    mapProviderIp = firstRobot.ip
-
-    // Clear previous viewer if it exists
-    if (viewer) {
-      viewer.scene.removeAllChildren()
-    } else {
-      viewer = new ROS2D.Viewer({
-        divID: "map",
-        width: 500,
-        height: 500
-      })
-    }
-
-    // create new connection for the map provider robot
-    rosMapConnection = new ROSLIB.Ros({
-      url: `ws://${mapProviderIp}:9090`
-    })
-
-    rosMapConnection.on("connection", () => {
-
-      console.log(`Connected to ROS bridge on ${firstRobot.hostname} at ${firstRobot.ip} for map visualization.`)
-
-      const gridClient = new ROS2D.OccupancyGridClient({
-        ros: rosMapConnection,
-        rootObject: viewer.scene,
-        topic: "/map",
-        continuous: false
-      })
-
-      gridClient.on("change", () => {
-        const grid = gridClient.currentGrid
-        if (!grid) return
-
-        viewer.scaleToDimensions(grid.width, grid.height)
-        viewer.shift(grid.pose.position.x, grid.pose.position.y)
-      })
-
-      // reattach existing markers to new viewer
-      Object.values(robotMarkers).forEach((marker:any) => {
-        viewer.scene.addChild(marker)
-      })
-    })
+    mapProviderIp = null
+    for (const ip of [...robotLinks.keys()]) closeRobotLink(ip)
+    clearCostmaps()
   }
 
-  function drawArrowToViewer(ROSLIB: any, ROS2D: any, createjs: any) {
-
-    toDockRobots.value.forEach((robot:any, index:number) => {
-
-      // If already connected to this robot for markers, do nothing
-      if (markerProviderIPs.includes(robot.ip)) {
-        return
-      }
-
-      // Update the marker provider IPs
-      markerProviderIPs.push(robot.ip)
-
-      // create new connection for the marker provider robot
-      const ros = new ROSLIB.Ros({
-        url: `ws://${robot.ip}:9090`
-      })
-
-      // Add to the list of ROS connections for markers
-      rosMarkerConnections.push(ros)
-
-      ros.on("connection", () => {
-        // console.log(`Connected to ROS bridge on ${robot.hostname} at ${robot.ip}`)
-        // Create a unique color for each robot
-        const color: number[] = colorDict[robot.namespace] || [Math.floor(Math.random() * 256), Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)]
-
-        const robotMarker = new ROS2D.ArrowShape({
-          size: 0.6,
-          strokeSize: 0.05,
-          strokeColor: createjs.Graphics.getRGB(...color),
-          fillColor: createjs.Graphics.getRGB(...color)
-        })
-
-        // Store the marker in the robotMarkers object using the robot's IP as the key
-        robotMarkers[robot.ip] = robotMarker
-        viewer.scene.addChild(robotMarker)
-
-        const tfTopic = new ROSLIB.Topic({
-          ros: ros,
-          name: `/${robot.namespace}/tf`,
-          messageType: "tf2_msgs/msg/TFMessage"
-        })
-
-        // Subscribe to TF messages to get the robot's position and orientation
-        tfTopic.subscribe((msg:any) => {
-          msg.transforms.forEach((t:any) => {
-
-            const parent = t.header.frame_id
-            const child = t.child_frame_id
-
-            // map -> odom
-            if (child.endsWith("odom") && parent.endsWith("map")) {
-              mapOdom[robot.ip] = t.transform.translation
-            }
-
-            // odom -> base_footprint
-            if (child.endsWith("base_footprint") && parent.endsWith("odom")) {
-              odomBase[robot.ip] = t.transform.translation
-              odomBaseRot[robot.ip] = t.transform.rotation
-            }
-
-            // when both are available compute map -> base
-            if (mapOdom[robot.ip] && odomBase[robot.ip]) {
-
-              const marker = robotMarkers[robot.ip]
-
-              const x = mapOdom[robot.ip].x + odomBase[robot.ip].x
-              const y = mapOdom[robot.ip].y + odomBase[robot.ip].y
-
-              marker.x = x
-              marker.y = -y
-
-              const q = odomBaseRot[robot.ip]
-
-              const yaw = Math.atan2(
-                2 * (q.w*q.z + q.x*q.y),
-                1 - 2 * (q.y*q.y + q.z*q.z)
-              )
-
-              marker.rotation = -yaw * 180 / Math.PI
-            }
-          })
-        })
-      })
-    })
-  }
-  
-  watch(selectedRobotToDock, (newIp) => {
-
-    const ROS2D = (window as any).ROS2D
+  watch(toDockRobots, (robots) => {
     const ROSLIB = (window as any).ROSLIB
-    const createjs = (window as any).createjs
 
-    console.log("Selected robot to dock:", newIp)
-
-    if (!newIp) {
+    if (robots.length === 0) {
+      closeMapConnections()
+      mapViewer.value?.clear()
       return
     }
 
-    removeCostmapCamera()
+    // close links of robots that stopped running (looked up by IP, so closing several at once is safe)
+    const activeIps = new Set(robots.map(robot => robot.ip))
+    for (const ip of [...robotLinks.keys()]) {
+      if (!activeIps.has(ip)) closeRobotLink(ip)
+    }
 
-    const ros  = new ROSLIB.Ros({
-      url: `ws://${newIp}:9090`
+    initMap(ROSLIB, robots[0])
+    robots.forEach(robot => connectRobot(ROSLIB, robot))
+  })
+
+  onUnmounted(() => closeMapConnections())
+
+  function initMap(ROSLIB: any, mapRobot: any) {
+    // If already connected to this robot, do nothing
+    if (mapProviderIp === mapRobot.ip) return
+
+    rosMapConnection?.close()
+    mapProviderIp = mapRobot.ip
+    const ros = new ROSLIB.Ros({ url: `ws://${mapRobot.ip}:9090` })
+    rosMapConnection = ros
+
+    ros.on("connection", () => {
+      console.log(`Connected to ROS bridge on ${mapRobot.hostname} at ${mapRobot.ip} for map visualization.`)
+      // the navigation map is static: take one message
+      const mapTopic = new ROSLIB.Topic({ ros, name: "/map", messageType: "nav_msgs/msg/OccupancyGrid" })
+      mapTopic.subscribe((msg: any) => {
+        mapTopic.unsubscribe()
+        if (rosMapConnection !== ros) return
+        mapViewer.value?.setGrid(gridFromMessage(msg))
+      })
     })
-    costmapConnection = ros
+  }
+
+  function connectRobot(ROSLIB: any, robot: any) {
+    // If already connected to this robot, do nothing
+    if (robotLinks.has(robot.ip)) return
+
+    const ros = new ROSLIB.Ros({ url: `ws://${robot.ip}:9090` })
+    robotLinks.set(robot.ip, ros)
+
+    ros.on("connection", () => {
+      const tfTopic = new ROSLIB.Topic({ ros, name: `/${robot.namespace}/tf`, messageType: "tf2_msgs/msg/TFMessage" })
+      tfTopic.subscribe((msg: any) => {
+        let updated = false
+        msg.transforms.forEach((t: any) => {
+          // frames may be namespaced ('couliglig_bot_1/odom')
+          const parent = bareFrame(t.header?.frame_id)
+          const child = bareFrame(t.child_frame_id)
+          if (parent === "map" && child === "odom") {
+            mapOdom[robot.ip] = tfToPose2D(t)
+            updated = true
+          } else if (parent === "odom" && child === "base_footprint") {
+            odomBase[robot.ip] = tfToPose2D(t)
+            updated = true
+          }
+        })
+        if (!updated || !mapOdom[robot.ip] || !odomBase[robot.ip]) return
+        // map -> base = (map -> odom) ∘ (odom -> base); the rotation of map -> odom matters
+        // whenever AMCL's pose isn't aligned with odom (e.g. a robot that started turned)
+        mapViewer.value?.setRobotPose(robot.ip, composePose2D(mapOdom[robot.ip], odomBase[robot.ip]))
+      })
+
+      // Nav2's global plan, in the map frame
+      const planTopic = new ROSLIB.Topic({ ros, name: `/${robot.namespace}/plan`, messageType: "nav_msgs/msg/Path", throttle_rate: 500 })
+      planTopic.subscribe((msg: any) => {
+        if (bareFrame(msg.header?.frame_id) !== "map") return
+        const poses = msg.poses ?? []
+        const step = Math.max(1, Math.floor(poses.length / 300))
+        const points: [number, number][] = []
+        for (let i = 0; i < poses.length; i += step) points.push([poses[i].pose.position.x, poses[i].pose.position.y])
+        if (poses.length) {
+          const last = poses[poses.length - 1].pose.position
+          points.push([last.x, last.y])
+        }
+        mapViewer.value?.setPath(robot.ip, points)
+      })
+    })
+  }
+
+  // costmaps of the robot picked for docking
+  watch(selectedRobotToDock, (newIp: string | null) => {
+    console.log("Selected robot to dock:", newIp)
+    clearCostmaps()
+    if (!newIp) return
 
     const robot_namespace = toDockRobots.value.find(robot => robot.ip === newIp)?.namespace
     if (!robot_namespace) {
@@ -887,215 +913,47 @@
       return
     }
 
-    const camera = document.getElementById("camera")
-    if (!camera) {
-      console.error("Camera div not found")
-      return
-    }
-    if (camera) {
-      camera.innerHTML = `<iframe
-        src="${streamImageURL.value}:8889/${robot_namespace}"
-        width="400"
-        height="400"
-        autoplay
-        muted
-        playsinline
-      ></iframe>`
-    }
+    const ROSLIB = (window as any).ROSLIB
+    const ros = new ROSLIB.Ros({ url: `ws://${newIp}:9090` })
+    costmapConnection = ros
 
-    const localCostmapCanvas = document.createElement("canvas")
-    const localCtx = localCostmapCanvas.getContext("2d")
-    const localCostmapBitmap = new createjs.Bitmap(localCostmapCanvas)
-    localCostmaps = localCostmapBitmap
-    viewer.scene.addChild(localCostmapBitmap)
-
-    const globalCostmapCanvas = document.createElement("canvas")
-    const globalCtx = globalCostmapCanvas.getContext("2d")
-    const globalCostmapBitmap = new createjs.Bitmap(globalCostmapCanvas)
-    globalCostmaps = globalCostmapBitmap
-    viewer.scene.addChild(globalCostmapBitmap)
-
-
-    if (!localCtx) {
-      console.error("Failed to get canvas context for costmap visualization.")
-      return
-    }
-
-    const localCostmapTopic = new ROSLIB.Topic({
-      ros: ros,
-      name: `/${robot_namespace}/local_costmap/costmap`,
-      messageType: "nav_msgs/msg/OccupancyGrid"
-    })
-
-    if (!globalCtx) {
-      console.error("Failed to get canvas context for costmap visualization.")
-      return
-    }
-
-    const globalCostmapTopic = new ROSLIB.Topic({
-      ros: ros,
-      name: `/${robot_namespace}/global_costmap/costmap`,
-      messageType: "nav_msgs/msg/OccupancyGrid"
-    })
-    
     ros.on("connection", () => {
       console.log(`Connected to ROS bridge on ${robot_namespace} at ${newIp} for costmap visualization.`)
-      localCostmapTopic.subscribe((msg:any)=>{
-
-        const width = msg.info.width
-        const height = msg.info.height
-        const data = msg.data
-
-        localCostmapCanvas.width = width
-        localCostmapCanvas.height = height
-
-        const img = localCtx.createImageData(width,height)
-
-        for (let y = 0; y < height; y++) {
-
-          for (let x = 0; x < width; x++) {
-
-            const rosIndex = y * width + x
-            const canvasIndex = ((height - y - 1) * width + x) * 4
-
-            const cost = data[rosIndex]
-
-            const [r,g,b,a] = costLocalToColor(cost)
-
-            img.data[canvasIndex] = r
-            img.data[canvasIndex + 1] = g
-            img.data[canvasIndex + 2] = b
-            img.data[canvasIndex + 3] = a
-          }
-        }
-
-        localCtx.putImageData(img,0,0)
-
-        const origin = msg.info.origin.position
-        const resolution = msg.info.resolution
-
-        // wait until TF exists
-        if (!mapOdom[newIp]) return
-
-        // transform costmap origin from odom frame → map frame
-        const mapOriginX = mapOdom[newIp].x + origin.x
-        const mapOriginY = mapOdom[newIp].y + origin.y
-
-        localCostmaps.x = mapOriginX
-        localCostmaps.y = -mapOriginY - height * resolution
-
-        localCostmaps.scaleX = resolution
-        localCostmaps.scaleY = resolution
-      })
-      globalCostmapTopic.subscribe((msg:any)=>{
-
-        const width = msg.info.width
-        const height = msg.info.height
-        const data = msg.data
-
-        globalCostmapCanvas.width = width
-        globalCostmapCanvas.height = height
-
-        const img = globalCtx.createImageData(width,height)
-
-        for (let y = 0; y < height; y++) {
-
-          for (let x = 0; x < width; x++) {
-
-            const rosIndex = y * width + x
-            const canvasIndex = ((height - y - 1) * width + x) * 4
-
-            const cost = data[rosIndex]
-
-            const [r,g,b,a] = costGlobalToColor(cost)
-
-            img.data[canvasIndex] = r
-            img.data[canvasIndex + 1] = g
-            img.data[canvasIndex + 2] = b
-            img.data[canvasIndex + 3] = a
-          }
-        }
-
-        globalCtx.putImageData(img,0,0)
-
-        const origin = msg.info.origin.position
-        const resolution = msg.info.resolution
-
-        // wait until TF exists
-        if (!mapOdom[newIp]) return
-
-        // transform costmap origin from odom frame → map frame
-        const mapOriginX = mapOdom[newIp].x + origin.x
-        const mapOriginY = mapOdom[newIp].y + origin.y
-
-        globalCostmaps.x = mapOriginX
-        globalCostmaps.y = -mapOriginY - height * resolution
-
-        globalCostmaps.scaleX = resolution
-        globalCostmaps.scaleY = resolution
-      })
-      
+      for (const kind of ["local", "global"] as const) {
+        const topic = new ROSLIB.Topic({
+          ros,
+          name: `/${robot_namespace}/${kind}_costmap/costmap`,
+          messageType: "nav_msgs/msg/OccupancyGrid",
+        })
+        topic.subscribe((msg: any) => {
+          if (costmapConnection !== ros) return
+          const origin = costmapOriginInMap(msg, newIp)
+          // a local costmap (odom frame) waits until map -> odom is known
+          if (origin) mapViewer.value?.setCostmap(kind, { ...gridFromMessage(msg), origin })
+        })
+      }
     })
   })
 
-  function costLocalToColor(cost: number): [number, number, number, number] {
-
-    if (cost === 0)
-      return [0,0,0,0]
-
-    if (cost >= 100)
-      return [255,0,0,255] // obstacle
-
-    if (cost > 0)
-      return [0,220,255,160] // inflation
-
-    return [0,0,0,0]
+  // Origin of a costmap in the map frame, from the frame its OccupancyGrid header names:
+  // 'map' as is, 'odom' through this robot's map -> odom (rotation included).
+  function costmapOriginInMap(msg: any, robotIp: string): Pose2D | null {
+    const originInFrame = gridFromMessage(msg).origin
+    const frame = bareFrame(msg.header?.frame_id)
+    if (frame === "map") return originInFrame
+    if (frame === "odom") {
+      const mo = mapOdom[robotIp]
+      return mo ? composePose2D(mo, originInFrame) : null
+    }
+    console.warn(`Costmap in unsupported frame '${msg.header?.frame_id}', not drawn`)
+    return null
   }
 
-  function costGlobalToColor(cost: number): [number, number, number, number] {
-
-    if (cost === 0)
-      return [0,0,0,0]
-
-    if (cost >= 100)
-      return [0,255,255,100] // obstacle
-
-    if (cost > 0) {
-      const alpha = Math.min(120, cost * 0.5)
-      return [100,200,255,alpha] // soft blue inflation
-  }
-
-    return [0,0,0,0]
-  }
-
-  function legendColor(){
-    const legend = toDockRobots.value.map((robot:any) => {
-      const color: number[] = colorDict[robot.namespace] || [Math.floor(Math.random() * 256), Math.floor(Math.random() * 256), Math.floor(Math.random() * 256)]
-      return {
-        name: robot.namespace,
-        color: `rgb(${color[0]}, ${color[1]}, ${color[2]})`
-      }
-    })
-    return legend
-  }
-
-  function removeCostmapCamera() {
-    const camera = document.getElementById("camera")
-    if (camera) {
-      camera.innerHTML = ""
-    }
-    if (costmapConnection) {
-      costmapConnection.close()
-      costmapConnection = null
-    }
-    if (localCostmaps) {
-      viewer.scene.removeChild(localCostmaps)
-      localCostmaps = null
-    }
-    if (globalCostmaps) {
-      viewer.scene.removeChild(globalCostmaps)
-      globalCostmaps = null
-    }
+  function clearCostmaps() {
+    costmapConnection?.close()
+    costmapConnection = null
+    mapViewer.value?.setCostmap("local", null)
+    mapViewer.value?.setCostmap("global", null)
   }
 
   function usePolling(fn: () => Promise<void>, delay = 5000) {
@@ -1153,16 +1011,30 @@
 </script>
 
 <style scoped>
-  .robot-color {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    border: 1px solid rgba(0,0,0,0.2);
-  }
-
-  .robot-label {
-    font-size: 12px;
+  /* layer toggles above the map; colours match the map palette in MapViewer.vue */
+  .layer-toggles { display: flex; flex-wrap: wrap; gap: 6px; }
+  .layer-toggles button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
     font-weight: 500;
-    color: #555;
+    letter-spacing: normal;
+    border: 1px solid #d6dce3;
+    background: #fff;
+    color: #5b6876;
+    border-radius: 999px;
+    padding: 3px 11px 3px 9px;
+    cursor: pointer;
   }
+  .layer-toggles button i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .layer-toggles button[aria-pressed="true"] { color: #16202b; border-color: #16202b; }
+  .layer-toggles button[aria-pressed="false"] i { opacity: 0.3; }
+  .layer-toggles button:focus-visible { outline: 2px solid #e8590c; outline-offset: 2px; }
+
+  /* chips on the map (MapViewer slots) */
+  .map-info-line { color: #5b6876; }
+  .map-legend { display: grid; grid-template-columns: auto auto; gap: 3px 8px; align-items: center; }
+  .sw { width: 12px; height: 12px; justify-self: center; }
+  .sw.robot { border-radius: 50%; }
 </style>
