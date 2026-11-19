@@ -36,6 +36,12 @@ export default defineNuxtConfig({
     }
   },
 
+  // Pre-compress public files (gzip + brotli) at build time: the simulator's
+  // index.wasm drops from ~38 MB to a fraction of that on the wire.
+  nitro: {
+    compressPublicAssets: true
+  },
+
   runtimeConfig: {
     public: {
       baseURL: process.env.BE_BASE_URL || 'http://localhost:8000/'
