@@ -26,6 +26,10 @@
     </v-col>
 
     <v-col>
+      <FleetControlCard />
+    </v-col>
+
+    <v-col>
       <v-card elevation="3">
         <v-card-title class="d-flex align-center">
           <p class="ml-1"><v-icon class="py-0 my-0" color="blue">mdi-launch</v-icon><span class="ml-1">Launch Robots</span></p>
@@ -130,7 +134,8 @@
         <v-footer >
           <v-row >
             <v-col cols="auto">
-              <v-btn variant="flat" prepend-icon="mdi-play" :disabled="!selectedRobotToDock || !selectedDockConfig || !selectedDockId" :color="!selectedRobotToDock || !selectedDockConfig || !selectedDockId ? '' : 'primary'" @click="dockRobot">Dock Robot</v-btn>
+              <v-btn variant="flat" prepend-icon="mdi-play" :disabled="handLocked || !selectedRobotToDock || !selectedDockConfig || !selectedDockId" :color="handLocked || !selectedRobotToDock || !selectedDockConfig || !selectedDockId ? '' : 'primary'" @click="dockRobot">Dock Robot</v-btn>
+              <p v-if="handLocked" class="text-caption text-medium-emphasis mt-1">Switch the fleet to Manual to dock by hand.</p>
             </v-col>
             <v-col cols="12" sm="4" md="4" lg="3" xl="2">
               <v-select
@@ -149,7 +154,7 @@
             </v-col>
             <v-spacer />
             <v-col>
-              <v-btn variant="plain" prepend-icon="mdi-home-circle-outline" v-if="selectedDockConfig && selectedRobotToDock" @click="goToInitialPose()">
+              <v-btn variant="plain" prepend-icon="mdi-home-circle-outline" v-if="selectedDockConfig && selectedRobotToDock" :disabled="handLocked" @click="goToInitialPose()">
                 Go to initial pose
               </v-btn>              
             </v-col>
@@ -312,6 +317,13 @@ import { bareFrame, composePose2D, tfToPose2D, type Pose2D } from '~/utils/dockM
 import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } from '~/utils/mapRenderer'
 
   const dockStore = useDockStore()
+  // FLEET_MODE=bus: in Auto the coordinator drives the robots, so hand docking is off
+  // (Stop always works); the dock table follows the coordinator's items.
+  const fleetStore = useFleetStore()
+  const handLocked = computed(() => fleetStore.handControlLocked)
+  watch(() => JSON.stringify(fleetStore.snapshot?.items ?? null), (now, before) => {
+    if (fleetStore.isBus && before !== undefined && now !== before) refreshDocks()
+  })
   const selectedRobotsToLaunch = ref<string[]>([])
   const selectedRobotToDock = ref(null)
   const selectedDockConfig = ref<number | null>(null)
@@ -364,6 +376,9 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
   async function dockRobot() {
     try {
       loading.value = true
+      if (handLocked.value) {
+        throw new Error("The fleet is in Auto: switch to Manual to dock by hand.")
+      }
       if (!selectedRobotToDock.value || !selectedDockConfig.value || !selectedDockId.value) {
         throw new Error("Please select a robot, dock configuration, and dock to proceed with docking.")
       }
@@ -982,6 +997,9 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
   async function goToInitialPose() {
     try {
       loading.value = true
+      if (handLocked.value) {
+        throw new Error("The fleet is in Auto: switch to Manual to move robots by hand.")
+      }
       if (!selectedRobotToDock.value || !selectedDockConfig.value) {
         throw new Error("Please select a robot, dock configuration, and dock to proceed with docking.")
       }
