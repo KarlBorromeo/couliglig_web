@@ -42,16 +42,45 @@
         The fleet coordinator is off (FLEET_MODE=legacy): each robot runs its own RL loop.
       </p>
       <template v-else>
+        <div v-if="policies.length" class="d-flex align-center flex-wrap ga-3 mb-3">
+          <span class="text-body-2 font-weight-medium">Decides with</span>
+          <v-btn-toggle
+            :model-value="fleet.snapshot?.policy"
+            mandatory
+            density="comfortable"
+            variant="outlined"
+            divided
+            :disabled="fleet.busy || !fleet.snapshot"
+            aria-label="Decision policy"
+            @update:model-value="switchPolicy"
+          >
+            <v-btn
+              v-for="p in policies"
+              :key="p.name"
+              :value="p.name"
+              :disabled="!p.available"
+              :prepend-icon="p.kind === 'rl' ? 'mdi-brain' : 'mdi-sitemap-outline'"
+            >
+              {{ p.label }}
+              <v-tooltip activator="parent" location="bottom" max-width="320">
+                {{ p.available ? policyHint(p) : `Not available: ${p.reason}` }}
+              </v-tooltip>
+            </v-btn>
+          </v-btn-toggle>
+          <v-chip size="small" variant="tonal" :color="currentPolicy?.kind === 'rl' ? 'deep-purple' : undefined">
+            {{ currentPolicy?.kind === 'rl' ? 'RL' : 'Heuristic' }}
+          </v-chip>
+        </div>
         <v-alert v-if="fleet.error" type="warning" variant="tonal" density="compact" class="mb-3">
           {{ fleet.error }}. Manual controls stay available.
         </v-alert>
         <p v-else-if="fleet.control === 'manual'" class="text-body-2 mb-3">
           <strong>Manual:</strong> the coordinator gives robots no tasks; move them by hand below.
-          Switch to <strong>Auto</strong> to let it run the orders.
+          Switch to <strong>Auto</strong> to let it run the orders with <strong>{{ currentPolicy?.label }}</strong>.
         </p>
         <p v-else-if="fleet.control === 'auto'" class="text-body-2 mb-3">
-          <strong>Auto:</strong> the coordinator is running the orders; hand docking is off.
-          Switching to <strong>Manual</strong> lets running tasks finish and starts no new ones.
+          <strong>Auto:</strong> the coordinator is running the orders with <strong>{{ currentPolicy?.label }}</strong>;
+          hand docking is off. Switching to <strong>Manual</strong> lets running tasks finish and starts no new ones.
         </p>
         <p v-if="anyEstop" class="text-body-2 text-error mb-3">
           E-stopped: robots stay stopped until you switch to Auto.
@@ -108,7 +137,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useFleetStore, type FleetControl, type FleetRobot } from '~/stores/fleetStore'
+import { useFleetStore, type FleetControl, type FleetPolicy, type FleetRobot } from '~/stores/fleetStore'
 
 const fleet = useFleetStore()
 const snackbar = ref<any>(null)
@@ -124,6 +153,29 @@ const items = computed(() =>
     .filter(([, it]) => it.status !== 'DELIVERED')
     .map(([id, it]) => ({ id, ...it })))
 const anyEstop = computed(() => robots.value.some(r => r.exec_state === 'ESTOP'))
+const policies = computed<FleetPolicy[]>(() => fleet.snapshot?.policies ?? [])
+const currentPolicy = computed(() => policies.value.find(p => p.name === fleet.snapshot?.policy))
+
+const POLICY_HINTS: Record<string, string> = {
+  stay: 'Heuristic: each robot takes the nearest work; transporters wait in their zone.',
+  greedy: 'Heuristic: each robot takes the nearest work; transporters may move between zones.',
+  assign: 'Heuristic: one plan for the whole fleet. Robots are matched to work at least total cost, '
+    + 'items with long routes start first, transporters spread over the zones and wait for a box on its way.',
+  marl_onnx: 'The trained RL model; a robot it cannot decide for in time gets the heuristic instead.',
+}
+function policyHint(p: FleetPolicy) {
+  return POLICY_HINTS[p.name] ?? p.label
+}
+
+async function switchPolicy(name: string) {
+  if (!name || name === fleet.snapshot?.policy) return
+  try {
+    await fleet.setPolicy(name)
+    snackbar.value?.showSnackbar(`Decides with ${currentPolicy.value?.label ?? name} from the next round`, 'success')
+  } catch (error: any) {
+    snackbar.value?.showSnackbar(error.message, 'error', 6000)
+  }
+}
 
 function taskText(r: FleetRobot) {
   const t = r.task ? fleet.snapshot?.tasks[r.task] : undefined

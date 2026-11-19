@@ -30,10 +30,19 @@ export interface FleetItem {
   transporter: string | null;
 }
 export interface FleetTask { robot: string; kind: string; status: string; target: string }
+export interface FleetPolicy {
+  name: string;              // stay | greedy | marl_onnx
+  label: string;
+  kind: "heuristic" | "rl" | string;
+  available: boolean;
+  reason: string | null;     // why it is not available (e.g. the RL model failed to load)
+}
 export interface FleetSnapshot {
   epoch: number;
   paused: boolean;
   control: FleetControl;
+  policy: string;              // who decides in auto: stay | greedy | marl_onnx
+  policies: FleetPolicy[];
   robots: Record<string, FleetRobot>;
   items: Record<string, FleetItem>;
   tasks: Record<string, FleetTask>;
@@ -91,6 +100,18 @@ export const useFleetStore = defineStore("fleet", {
         await this.fetchSnapshot();
       } catch (error) {
         throw new Error(detail(error, `could not switch to ${control}`));
+      } finally {
+        this.busy = false;
+      }
+    },
+    // Who decides in auto: a heuristic or the RL model. Running tasks finish as planned.
+    async setPolicy(policy: string) {
+      this.busy = true;
+      try {
+        await axios.post(`${useBaseURL()}fleet/policy`, { policy });
+        await this.fetchSnapshot();
+      } catch (error) {
+        throw new Error(detail(error, `could not switch to ${policy}`));
       } finally {
         this.busy = false;
       }
