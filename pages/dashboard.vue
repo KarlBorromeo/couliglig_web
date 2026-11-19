@@ -40,6 +40,11 @@
                 <v-icon size="20">mdi-controller-classic</v-icon>
               </v-btn>
             </td>
+            <td>
+              <v-btn variant="flat" size="x-small" aria-label="Services and logs" @click="openServices(item)">
+                <v-icon size="20">mdi-console</v-icon>
+              </v-btn>
+            </td>
           </tr>
         </tbody>
       </v-table>
@@ -64,11 +69,13 @@
         </v-card-text>
         
     </v-card>
+    <RobotServicesDialog v-model="servicesOpen" :robot="servicesRobot" />
     <Snackbar ref="snackbar" />
     <LoadingScreen v-model="loading" />
   </v-container>
 </template>
 <script setup lang="ts">
+  import type { onlineRobot } from '~/stores/dockStore'
   const snackbar = ref<any>(null)
   const dockStore = useDockStore()
   const activeRobotHeader = [
@@ -77,7 +84,8 @@
     'IP Address',
     'Status',
     'Battery (%)',
-    'Controller'
+    'Controller',
+    'Services'
   ]
   const activeRobots = computed(() => dockStore.onlineRobots)
   const runnningRobots = computed(() => dockStore.toDockRobots)
@@ -165,6 +173,14 @@
     console.log("Closing ROS connections...")
     rosConnections.forEach((ros) => ros.close())
   })
+
+  // couliglig-api / couliglig-main logs and start / stop / restart (the robot API's /services)
+  const servicesOpen = ref(false)
+  const servicesRobot = ref<onlineRobot | null>(null)
+  function openServices(robot: onlineRobot) {
+    servicesRobot.value = robot
+    servicesOpen.value = true
+  }
 
   function routeController(ip: string) {
     window.open(`http://${ip}:8000/jc`, '_blank')
