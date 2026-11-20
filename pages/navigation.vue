@@ -17,16 +17,11 @@
           v-model="selectedDockConfig"
           variant="outlined"
           hide-details
-          :disabled="!activateButton"
+          :disabled="configLocked"
         ></v-select>
         <p class="text-caption">Description: {{ selectedDockConfig ? dockConfigs.find(config => config.id === selectedDockConfig)?.description : '' }}</p>
-        <v-btn color="primary" v-if="activateButton" @click="activateConfig" :disabled="!selectedDockConfig">Activate</v-btn>
-        <v-btn color="secondary" v-else @click="deactivateConfig">Deactivate</v-btn>
+        <v-btn color="secondary" v-if="configLocked" @click="deactivateConfig">Deactivate</v-btn>
       </section>
-    </v-col>
-
-    <v-col>
-      <FleetControlCard />
     </v-col>
 
     <v-col>
@@ -161,6 +156,9 @@
           </v-row>
           </v-footer>
       </v-card>
+    </v-col>
+    <v-col>
+      <FleetControlCard />
     </v-col>
     <v-col>
       <v-row>
@@ -345,8 +343,31 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
     loading.value = true
     await dockStore.fetchDockConfigs()
     await dockStore.fetchOnlineRobotsWS()
+    await restoreSelectedConfig()
     loading.value = false
   }
+
+  // A config counts as active while any robot is in the Dock Robots list;
+  // the dropdown stays locked on it until those robots are gone.
+  const configActive = computed(() => toDockRobots.value.length > 0)
+  const configLocked = computed(() => configActive.value && !!selectedDockConfig.value)
+
+  // Re-select the config the robots were launched with. The watcher on
+  // selectedDockConfig saves it server-side, so it survives a page reload.
+  async function restoreSelectedConfig() {
+    if (selectedDockConfig.value) return
+    try {
+      const { configID } = await (await fetch('/api/selected-config')).json()
+      const id = configID ?? dockStore.dockConfigs.find(config => config.is_active)?.id ?? null
+      if (id && !selectedDockConfig.value) selectedDockConfig.value = id
+    } catch (error) {
+      console.warn("Could not restore selected dock configuration:", error)
+    }
+  }
+
+  watch(configActive, (active) => {
+    if (active) restoreSelectedConfig()
+  })
 
   async function launchRobots() {
     try {
@@ -438,35 +459,6 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
     }
   }
 
-  async function activateConfig(){
-    const activeConfig = dockStore.dockConfigs.find(config => config.id === selectedDockConfig.value)
-    if (!activeConfig) {
-      snackbar?.value.showSnackbar("Selected dock configuration not found. Please select a valid configuration to activate.", "error")
-      return
-    }
-    if (!selectedDockConfig.value){
-      snackbar?.value.showSnackbar("Please select a dock configuration to activate.", "error")
-      return
-    }
-    try {
-      loading.value = true
-      await dockStore.activateDockConfig(selectedDockConfig.value)
-      await dockStore.fetchDockConfigs()
-      const activeConfig = dockStore.dockConfigs.find(config => config.is_active)
-      if (activeConfig) {
-        selectedDockConfig.value = activeConfig.id
-        activateButton.value = false
-      }else {
-        console.warn("No active dock configuration found. Please select a configuration to proceed.")
-        activateButton.value = true
-      }
-    } catch (error) {
-      snackbar?.value.showSnackbar(error, "error")
-    } finally {
-      loading.value = false
-    }
-  }
-
   async function deactivateConfig(){
     loading.value = true
     const activatedConfig = dockStore.dockConfigs.find(config => config.id === selectedDockConfig.value && config.is_active)
@@ -477,11 +469,9 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
     await dockStore.dockClear()
     selectedDockConfig.value = null
     await dockStore.fetchDockConfigs()
-    activateButton.value = true
     loading.value = false
   }
 
-  const activateButton = ref(false)
   const streamImageURL = ref('')
   onMounted(async () => {
     try{
@@ -489,14 +479,7 @@ import { gridFromMessage, type MapDockMarker, type MapLayers, type RobotMeta } f
       loading.value = true
       await dockStore.fetchDockConfigs()
       await dockStore.fetchOnlineRobotsWS()
-      const activeConfig = dockStore.dockConfigs.find(config => config.is_active)
-      if (activeConfig) {
-        selectedDockConfig.value = activeConfig.id
-        activateButton.value = false
-      }else {
-        console.warn("No active dock configuration found. Please select a configuration to proceed.")
-        activateButton.value = true
-      }
+      await restoreSelectedConfig()
     } catch (error) {
       // console.error("Error fetching dock configs or online robots:", error)
       snackbar?.value.showSnackbar(error, "error")
